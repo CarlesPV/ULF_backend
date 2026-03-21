@@ -1,0 +1,21 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'src/rules/database.rules.json'
+      - 'firebase.json'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Deploy Firebase
+        uses: w9jds/firebase-action@v15.11.0
+        with:
+          args: deploy --project unilost-and-found
+        env:
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
