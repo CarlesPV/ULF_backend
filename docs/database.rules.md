@@ -55,6 +55,7 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
 ```json
 "posts": {
     ".read": "auth != null",
+    ".indexOn": ["center_id", "type", "status", "category", "user_id"],
     "$post_id": {
         ".write": "auth != null && (!data.exists() || data.child('user_id').val() === auth.uid) && (!newData.exists() || newData.child('user_id').val() === auth.uid)",
         ".validate": "newData.hasChildren([...]) && ...",
@@ -68,6 +69,7 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
 | Regla | Decisión |
 | :--- | :--- |
 | `.read` | Cualquier usuario autenticado puede leer el feed de publicaciones. Es el comportamiento esperado para que los usuarios puedan buscar objetos perdidos o encontrados. |
+| `.indexOn` | Índices sobre `center_id`, `type`, `status`, `category` y `user_id` para que Firebase filtre en servidor al cargar el feed o el mapa, evitando descargar todos los posts al cliente. |
 | `.write` | Cubre tres casos: **creación** (`!data.exists()`), donde el `user_id` del nuevo dato debe ser el del usuario autenticado; **edición**, donde el `user_id` del dato existente debe coincidir con `auth.uid`; y **borrado físico**, que solo el propietario puede hacer. |
 | `.validate` | Valida campos obligatorios, los valores permitidos de `type` (`lost` o `found`) y de `status` (`active`, `matched` o `returned`), y los tipos de `created_at`, `updated_at` e `is_deleted`. |
 | `user_id > .validate` | El campo `user_id` es inmutable: una vez creado el post no puede reasignarse a otro usuario. |
@@ -76,10 +78,11 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
 ```json
 "post_views": {
     "$post_id": {
+        ".indexOn": ["timestamp"],
         "$user_id": {
             ".read": "auth != null && (auth.uid === $user_id || root.child('posts').child($post_id).child('user_id').val() === auth.uid)",
             ".write": "auth != null && auth.uid === $user_id",
-            ".validate": "newData.hasChildren(['timestamp']) && newData.child('timestamp').isNumber()"
+            ".validate": "newData.hasChildren(['timestamp']) && newData.child('timestamp').isNumber() && newData.child('timestamp').val() <= now"
         }
     }
 }
@@ -87,13 +90,15 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
 
 | Regla | Decisión |
 | :--- | :--- |
+| `.indexOn` | Índice sobre `timestamp` para ordenar las visitas cronológicamente en servidor. |
 | `.read` | Pueden leer el registro de visitas de un post: el propio usuario que lo visitó, o el creador del post (para que pueda ver quién ha visto su publicación). |
 | `.write` | Un usuario solo puede registrar su propia visualización. No puede escribir en el nodo de otro usuario. |
-| `.validate` | El único campo requerido es `timestamp`, que debe ser un número (Unix ms). |
+| `.validate` | El único campo requerido es `timestamp`, que debe ser un número (Unix ms). Además se valida que el `timestamp` no sea una fecha futura (`<= now`) para evitar corrupción del orden cronológico. |
 
 ## /chats
 ```json
 "chats": {
+    ".indexOn": ["center_id", "post_id"],
     "$chat_id": {
         ".read": "auth != null && data.child('members').child(auth.uid).val() === true",
         ".write": "auth != null && (!data.exists() || data.child('members').child(auth.uid).val() === true)",
@@ -104,6 +109,7 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
 
 | Regla | Decisión |
 | :--- | :--- |
+| `.indexOn` | Índices sobre `center_id` y `post_id` para filtrar chats por centro o por publicación. |
 | `.read` | Solo los miembros del chat pueden leerlo. Se comprueba que `auth.uid` esté presente en el mapa `members` con valor `true`. |
 | `.write` | En **creación** (`!data.exists()`), cualquier usuario autenticado puede abrir un chat. En **modificación**, solo los miembros existentes pueden escribir. |
 | `.validate` | Exige los campos obligatorios y además fuerza que el usuario que crea el chat se incluya a sí mismo como miembro, evitando que se creen chats sin propietario. |
@@ -125,4 +131,4 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
 | :--- | :--- |
 | `.read` | Solo los miembros del chat pueden leer sus mensajes. Se hace un cross-read a `/chats/{chat_id}/members` para comprobarlo. |
 | `.write` | Solo los miembros pueden escribir, y únicamente si el mensaje **no existe aún** (`!data.exists()`). Esto hace los mensajes inmutables: una vez enviados no se pueden editar ni borrar. |
-| `.validate` | Exige los campos obligatorios, que `sender_id` coincida con `auth.uid` (no se puede enviar un mensaje en nombre de otro usuario), y que `timestamp` sea un número. |
+| `.validate` | Exige los campos obligatorios, que `sender_id` coincida con `auth.uid` (no se puede enviar un mensaje en nombre de otro usuario), y que `timestamp` sea un número. Además se valida que el `timestamp` no sea una fecha futura (`<= now`) |
