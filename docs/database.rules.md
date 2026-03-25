@@ -39,6 +39,9 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
         ".validate": "newData.hasChildren([...]) && newData.child('id').val() === $user_id && ...",
         "role": {
             ".validate": "(!data.exists() && newData.val() === 'student') || (data.exists() && newData.val() === data.val())"
+        },
+        "center_id": {
+            ".validate": "root.child('centers').child(newData.val()).exists()"
         }
     }
 }
@@ -50,6 +53,7 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
 | `.write` | Un usuario solo puede escribir su propio perfil. |
 | `.validate` | Exige los campos obligatorios, que `id` coincida con el `$user_id` de la ruta, y que `created_at`, `updated_at` sean números y `is_deleted` sea booleano. |
 | `role > .validate` | Protección en dos niveles: en **creación**, el único rol permitido desde el cliente es `student`; los roles `janitor` y `admin` son de confianza y solo pueden asignarse desde un Cloud Function con permisos de servidor. En **modificación**, el rol no puede cambiarse una vez asignado. |
+| `center_id > .validate` | Verifica que el `center_id` proporcionado exista realmente en `/centers`. Evita que un usuario se registre con un centro inventado. |
 
 ## /posts
 ```json

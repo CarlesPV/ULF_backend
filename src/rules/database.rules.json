@@ -16,6 +16,9 @@
                 ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $user_id && newData.child('created_at').isNumber() && newData.child('updated_at').isNumber() && newData.child('is_deleted').isBoolean()",
                 "role": {
                     ".validate": "(!data.exists() && newData.val() === 'student') || (data.exists() && newData.val() === data.val())"
+                },
+                "center_id": {
+                    ".validate": "root.child('centers').child(newData.val()).exists()"
                 }
             }
         },
