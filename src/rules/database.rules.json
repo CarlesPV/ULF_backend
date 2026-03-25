@@ -14,19 +14,21 @@
                 ".read": "auth != null && auth.uid === $user_id",
                 ".write": "auth != null && auth.uid === $user_id",
                 ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $user_id && newData.child('created_at').isNumber() && newData.child('updated_at').isNumber() && newData.child('is_deleted').isBoolean()",
-                
                 "role": {
                     ".validate": "(!data.exists() && newData.val() === 'student') || (data.exists() && newData.val() === data.val())"
+                },
+                "center_id": {
+                    ".validate": "root.child('centers').child(newData.val()).exists()"
                 }
             }
         },
 
         "posts": {
             ".read": "auth != null",
+            ".indexOn": ["center_id", "type", "status", "category", "user_id"],
             "$post_id": {
                 ".write": "auth != null && (!data.exists() || data.child('user_id').val() === auth.uid) && (!newData.exists() || newData.child('user_id').val() === auth.uid)",
                 ".validate": "newData.hasChildren(['id', 'user_id', 'center_id', 'type', 'title', 'category', 'status', 'created_at', 'updated_at', 'is_deleted']) && (newData.child('type').val() === 'lost' || newData.child('type').val() === 'found') && (newData.child('status').val() === 'active' || newData.child('status').val() === 'matched' || newData.child('status').val() === 'returned') && newData.child('created_at').isNumber() && newData.child('updated_at').isNumber() && newData.child('is_deleted').isBoolean()",
-
                 "user_id": {
                     ".validate": "!data.exists() || newData.val() === data.val()"
                 }
@@ -35,15 +37,17 @@
 
         "post_views": {
             "$post_id": {
+                ".indexOn": ["timestamp"],
                 "$user_id": {
                     ".read": "auth != null && (auth.uid === $user_id || root.child('posts').child($post_id).child('user_id').val() === auth.uid)",
                     ".write": "auth != null && auth.uid === $user_id",
-                    ".validate": "newData.hasChildren(['timestamp']) && newData.child('timestamp').isNumber()"
+                    ".validate": "newData.hasChildren(['timestamp']) && newData.child('timestamp').isNumber() && newData.child('timestamp').val() <= now"
                 }
             }
         },
 
         "chats": {
+            ".indexOn": ["center_id", "post_id"],
             "$chat_id": {
                 ".read": "auth != null && data.child('members').child(auth.uid).val() === true",
                 ".write": "auth != null && (!data.exists() || data.child('members').child(auth.uid).val() === true)",
@@ -55,8 +59,8 @@
             "$chat_id": {
                 ".read": "auth != null && root.child('chats').child($chat_id).child('members').child(auth.uid).val() === true",
                 "$message_id": {
-                ".write": "auth != null && root.child('chats').child($chat_id).child('members').child(auth.uid).val() === true && !data.exists()",
-                ".validate": "newData.hasChildren(['id', 'sender_id', 'text', 'timestamp']) && newData.child('sender_id').val() === auth.uid && newData.child('text').isString() && newData.child('timestamp').isNumber()"
+                    ".write": "auth != null && root.child('chats').child($chat_id).child('members').child(auth.uid).val() === true && !data.exists()",
+                    ".validate": "newData.hasChildren(['id', 'sender_id', 'text', 'timestamp']) && newData.child('sender_id').val() === auth.uid && newData.child('text').isString() && newData.child('timestamp').isNumber() && newData.child('timestamp').val() <= now"
                 }
             }
         }
