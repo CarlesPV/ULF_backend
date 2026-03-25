@@ -1,0 +1,16 @@
+[
+    {
+        "id": "uab",
+        "name": "Universidad Autónoma de Barcelona",
+        "email_domains": {
+            "uab_cat": true
+        },
+        "boundary_coords": {
+            "lat_min": 41.49451348081195,
+            "lat_max": 41.507203912035436,
+            "lng_min": 2.093469875086038,
+            "lng_max": 2.1150098522174234
+        },
+        "is_active": true
+    }
+]
