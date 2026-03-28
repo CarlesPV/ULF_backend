@@ -17,6 +17,7 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
 ```json
 "centers": {
     ".read": "auth != null",
+    ".indexOn": ["is_active"],
     "$center_id": {
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
         ".validate": "newData.hasChildren(['id', 'name', 'email_domains', 'boundary_coords', 'is_active'])"
@@ -27,6 +28,7 @@ Documentación de las reglas de seguridad de Firebase Realtime Database. El arch
 | Regla | Decisión |
 | :--- | :--- |
 | `.read` | Cualquier usuario autenticado puede leer los centros. Es necesario para que la app pueda mostrar el centro al que pertenece el usuario. |
+| `.indexOn` | Índices sobre `is_active` para que Firebase filtre los centros en servidor. |
 | `.write` | Solo usuarios con `role === 'admin'` pueden crear o modificar centros. Se hace un cross-read a `/users/{auth.uid}/role` para comprobarlo. |
 | `.validate` | Exige que estén presentes los campos mínimos obligatorios del esquema. |
 
