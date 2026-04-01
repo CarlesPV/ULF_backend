@@ -1,6 +1,6 @@
 # UniLost & Found (ULF) - Realtime Database Rules
 
-Documentación de las reglas de seguridad de Firebase Realtime Database. El archivo de reglas se encuentra en `src/rules/database.rules.json`.
+Documentación de las reglas de seguridad de Firebase Realtime Database. El archivo de reglas se encuentra en `database/rules/database.rules.json`.
 
 ## Conceptos clave
 

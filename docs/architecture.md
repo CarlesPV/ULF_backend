@@ -18,13 +18,13 @@ Se ha introducido el ecosistema de Node.js/TypeScript al repositorio:
 
 ```
 / (raíz)
- ├── functions/                  # NUEVO: Entorno Backend Serverless
- │    ├── src/index.ts           # Lógica principal de las Cloud Functions
- │    ├── package.json           # Dependencias (firebase-admin, firebase-functions)
- │    └── tsconfig.json          # Reglas de compilación de TypeScript
- ├── .github/workflows/deploy.yml # ACTUALIZADO: Pipeline CI/CD
- ├── firebase.json               # ACTUALIZADO: Referencia a la compilación de functions
- └── src/rules/database.rules.json # ACTUALIZADO: Índices de optimización añadidos
+ ├── functions/                          # Entorno Backend Serverless
+ │    ├── src/index.ts                   # Lógica principal de las Cloud Functions
+ │    ├── package.json                   # Dependencias (firebase-admin, firebase-functions)
+ │    └── tsconfig.json                  # Reglas de compilación de TypeScript
+ ├── .github/workflows/deploy.yml        # Pipeline CI/CD
+ ├── firebase.json                       # Referencia a la compilación de functions
+ └── database/rules/database.rules.json  # Índices de optimización añadidos
 ```
 
 ## 4. Componentes Críticos Modificados
