@@ -1,0 +1,15 @@
+{
+  "name": "ulf-seed",
+  "private": true,
+  "scripts": {
+    "seed": "ts-node seed_db.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.11.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.0",
+    "typescript": "^4.9.0",
+    "@types/node": "^18.0.0"
+  }
+}

@@ -41,11 +41,16 @@ jobs:
     needs: deploy-backend
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-python@v6.2.0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
       - name: Install dependencies
-        run: pip install firebase-admin
+        run: npm install
+        working-directory: database/seed
       - name: Run seed
-        run: python src/scripts/seed_db.py
+        run: npm run seed
+        working-directory: database/seed
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ env.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_DATABASE_URL: ${{ env.FIREBASE_DATABASE_URL }}
