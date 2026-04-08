@@ -15,11 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       
-      # Configurar Node para compilar las funciones
+      # Configurar Node 20 (LTS Estable)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           
       # Instalar y compilar dentro de la carpeta functions
       - name: Install dependencies and build functions
@@ -28,8 +28,8 @@ jobs:
           npm install
           npm run build
           
-      # Desplegar tanto BD como Functions
-      - name: Deploy Firebase Database & Functions
+      # Desplegar BD, Functions y Storage
+      - name: Deploy Firebase Database, Functions & Storage
         uses: w9jds/firebase-action@v15.11.0
         with:
           args: deploy --project unilost-and-found --only database,functions,storage
@@ -41,13 +41,17 @@ jobs:
     needs: deploy-backend
     steps:
       - uses: actions/checkout@v6.0.2
+      
+      # Configurar Node 20 (LTS Estable)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
+          
       - name: Install dependencies
         run: npm install
         working-directory: database/seed
+        
       - name: Run seed
         run: npm run seed
         working-directory: database/seed
