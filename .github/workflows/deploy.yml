@@ -32,7 +32,7 @@ jobs:
       - name: Deploy Firebase Database & Functions
         uses: w9jds/firebase-action@v15.11.0
         with:
-          args: deploy --project unilost-and-found --only database,functions
+          args: deploy --project unilost-and-found --only database,functions,storage
         env:
           GCP_SA_KEY: ${{ env.FIREBASE_SERVICE_ACCOUNT }}
 
