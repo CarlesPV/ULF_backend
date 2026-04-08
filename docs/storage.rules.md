@@ -5,14 +5,15 @@ Documentación de las reglas de seguridad de Firebase Storage. El archivo de reg
 ## Conceptos clave
 
 - **`request.auth`**: Objeto del usuario autenticado. `request.auth.uid` es su identificador único.
-- **`request.resource`**: Recurso que se está subiendo.
+- **`request.resource`**: Recurso que se está subiendo (disponible en `create` y `update`, es `null` en `delete`).
 - **`request.resource.contentType`**: MIME type del archivo a subir.
 - **`request.resource.size`**: Tamaño en bytes del archivo a subir.
-- **`root`**: Referencia a la raíz de la Realtime Database, útil para hacer cross-checks.
+
+> **Nota:** Firebase Storage rules **no tienen acceso a la Realtime Database**. La variable `root` solo existe en las reglas de la Realtime Database, no en Storage. La verificación de propiedad (ownership) de un post debe hacerse a nivel de backend o Cloud Functions.
 
 ## `/posts/{postId}/{imageId}`
 
-```json
+```
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
@@ -24,13 +25,10 @@ service firebase.storage {
       return request.resource.contentType.matches('image/.*') && request.resource.size < 5 * 1024 * 1024;
     }
 
-    function isImageOwner(postId) {
-      return isAuthenticated() && root.child('posts').child(postId).child('user_id').val() == auth.uid;
-    }
-
     match /posts/{postId}/{imageId} {
       allow read: if isAuthenticated();
-      allow write: if isImageOwner(postId) && isValidImage();
+      allow create, update: if isAuthenticated() && isValidImage();
+      allow delete: if isAuthenticated();
     }
   }
 }
@@ -38,16 +36,18 @@ service firebase.storage {
 
 | Regla | Decisión |
 |:---|:---|
-| `allow read` | Cualquier usuario autenticado puede ver las imágenes de posts. Es necesario para que los usuarios puedan ver las fotos de los objetos perdidos/encontrados. |
-| `isAuthenticated()` | Helper que verifica que exista un usuario autenticado. |
-| `isValidImage()` | Helper que valida que el archivo sea una imagen (MIME type `image/.*`) y que pese menos de 5MB. Limita la carga de archivos maliciosos o muy pesados. |
-| `isImageOwner(postId)` | Helper que hace un cross-check con la Realtime Database para verificar que `auth.uid` coincide con el `user_id` del post. Esto evita que usuarios maliciosos suban imágenes a posts de otros usuarios. |
-| `allow write` | Solo el propietario del post puede subir imágenes, y debe ser una imagen válida < 5MB. |
+| `allow read` | Cualquier usuario autenticado puede ver las imágenes de posts. Necesario para mostrar fotos de objetos perdidos/encontrados. |
+| `isAuthenticated()` | Helper que verifica que exista un usuario autenticado via `request.auth`. |
+| `isValidImage()` | Helper que valida que el archivo sea una imagen (MIME type `image/.*`) y que pese menos de 5MB. Previene subida de archivos maliciosos o muy pesados. |
+| `allow create, update` | Solo usuarios autenticados pueden subir o reemplazar imágenes, y deben cumplir `isValidImage()`. Se separa de `delete` porque `request.resource` es `null` al borrar. |
+| `allow delete` | Cualquier usuario autenticado puede borrar imágenes. La validación de propiedad debe aplicarse en el backend. |
 
 ## Consideraciones de seguridad
 
-1. **Cross-reference con Realtime Database**: Se consulta `/posts/{postId}/user_id` para verificar propiedad. Esto es seguro porque las Security Rules de la Realtime Database ya prohíben modificar el `user_id` de un post existente.
+1. **Sin ownership check en Storage**: Firebase Storage no puede hacer cross-reference con la Realtime Database. El control de que solo el dueño del post pueda subir/borrar imágenes debe aplicarse en el backend (Cloud Functions o endpoint propio) antes de realizar la operación.
 
 2. **Validación de contenido**: La restricción de MIME type y tamaño protege contra:
-  - Subida de archivos ejecutables
+  - Subida de archivos ejecutables o no permitidos
   - Ataques de denegación de servicio por archivos muy grandes
+
+3. **`allow create, update` vs `allow write`**: Se usa la forma explícita para poder aplicar `isValidImage()` solo en operaciones donde `request.resource` existe. Usar `allow write` con validaciones sobre `request.resource` rompería las operaciones de `delete`.

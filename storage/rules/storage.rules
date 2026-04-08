@@ -9,13 +9,10 @@ service firebase.storage {
       return request.resource.contentType.matches('image/.*') && request.resource.size < 5 * 1024 * 1024;
     }
 
-    function isImageOwner(postId) {
-      return isAuthenticated() && root.child('posts').child(postId).child('user_id').val() == auth.uid;
-    }
-
     match /posts/{postId}/{imageId} {
       allow read: if isAuthenticated();
-      allow write: if isImageOwner(postId) && isValidImage();
+      allow create, update: if isAuthenticated() && isValidImage();
+      allow delete: if isAuthenticated();
     }
   }
 }
