@@ -3,6 +3,7 @@
 
         "centers": {
             ".read": "auth != null",
+            ".indexOn": ["is_active"],
             "$center_id": {
                 ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
                 ".validate": "newData.hasChildren(['id', 'name', 'email_domains', 'boundary_coords', 'is_active'])"
