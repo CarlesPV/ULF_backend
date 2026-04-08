@@ -7,7 +7,7 @@ on:
 
 env:
   FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-  FIREBASE_DATABASE_URL: https://unilost-and-found-default-rtdb.europe-west1.firebasedatabase.app
+  FIREBASE_DATABASE_URL: https://unilost-and-found-b6bb3-default-rtdb.europe-west1.firebasedatabase.app
 
 jobs:
   deploy-backend:
@@ -32,7 +32,7 @@ jobs:
       - name: Deploy Firebase Database, Functions & Storage
         uses: w9jds/firebase-action@v15.11.0
         with:
-          args: deploy --project unilost-and-found --only database,functions,storage
+          args: deploy --project unilost-and-found-b6bb3 --only database,functions,storage
         env:
           GCP_SA_KEY: ${{ env.FIREBASE_SERVICE_ACCOUNT }}
 
