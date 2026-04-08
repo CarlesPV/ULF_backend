@@ -44,7 +44,7 @@ service firebase.storage {
 
 ## Consideraciones de seguridad
 
-1. **Sin ownership check en Storage**: Firebase Storage no puede hacer cross-reference con la Realtime Database. El control de que solo el dueño del post pueda subir/borrar imágenes debe aplicarse en el backend (Cloud Functions o endpoint propio) antes de realizar la operación.
+1. **Sin ownership check en Storage**: Firebase Storage no puede hacer cross-reference con la Realtime Database. El control de que solo el dueño del post pueda subir/borrar imágenes debe aplicarse en el backend (Cloud Functions) antes de realizar la operación.
 
 2. **Validación de contenido**: La restricción de MIME type y tamaño protege contra:
   - Subida de archivos ejecutables o no permitidos
