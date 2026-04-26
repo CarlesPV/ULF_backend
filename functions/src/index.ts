@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as geofire from "geofire-common";
 import { v2 as translate } from '@google-cloud/translate';
+import { onValueCreated } from "firebase-functions/v2/database";
 
 admin.initializeApp();
 const db = admin.database();
@@ -101,26 +102,23 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
     NUEVO TRIGGER: Traducir la descripción automáticamente al crear un post
     Se ejecuta cada vez que se crea un nuevo post en /posts/{postId}
 */
-export const onPostCreated = functions.database.ref('/posts/{postId}')
-    .onCreate(async (snapshot, context) => {
-        const post = snapshot.val();
-        
-        // Si no hay descripción, no hacemos nada
-        if (!post.description) return null;
+export const onPostCreated = onValueCreated('/posts/{postId}', async (event) => {
+    const snapshot = event.data;
+    const post = snapshot.val();
+    
+    if (!post.description) return null;
 
-        try {
-            // Traducir al idioma común (inglés)
-            const [translation] = await translateClient.translate(post.description, TARGET_LANGUAGE);
-            
-            // Guardar la descripción traducida en la RTDB en minúsculas para búsquedas
-            return snapshot.ref.update({
-                translated_description: translation.toLowerCase()
-            });
-        } catch (error) {
-            console.error(`Error traduciendo el post ${context.params.postId}:`, error);
-            return null;
-        }
-    });
+    try {
+        const [translation] = await translateClient.translate(post.description, TARGET_LANGUAGE);
+        
+        return snapshot.ref.update({
+            translated_description: translation.toLowerCase()
+        });
+    } catch (error) {
+        console.error(`Error traduciendo el post ${event.params.postId}:`, error);
+        return null;
+    }
+});
 
 /*
     Función para verificar posibles coincidencias entre publicaciones de objetos perdidos y encontrados
