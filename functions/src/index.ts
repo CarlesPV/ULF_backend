@@ -5,7 +5,7 @@ admin.initializeApp();
 const db = admin.database();
 
 export const secureUniversityRegistration = functions.https.onCall(async (data, context) => {
-    const { email, password, name } = data;
+    const { email, password, name } = request.data;
 
     if (!email || !password || !name) {
         throw new functions.https.HttpsError("invalid-argument", "Datos incompletos.");
