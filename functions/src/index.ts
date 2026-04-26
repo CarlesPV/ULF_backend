@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 admin.initializeApp();
 const db = admin.database();
 
+// Función segura para el registro de usuarios en universidades
 export const secureUniversityRegistration = functions.https.onCall(async (request) => {
     const { email, password, name } = request.data;
 
@@ -68,7 +69,7 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
         return { success: true, uid: uid };
 
     } catch (error: any) {
-        // 6. MECANISMO DE ROLLBACK (Crucial para la integridad de la BD)
+        // 6. MECANISMO DE ROLLBACK
         if (uid) {
             console.warn(`[ROLLBACK] Falló la escritura en RTDB para el UID ${uid}. Eliminando de Auth...`);
             try {
@@ -86,4 +87,58 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
 
         throw new functions.https.HttpsError("internal", "Error de sistema al crear la cuenta. Intente nuevamente.");
     }
+});
+
+// Función para verificar posibles coincidencias entre publicaciones de objetos perdidos y encontrados
+export const checkPotentialMatches = functions.https.onCall(async (request) => {
+    const { center_id, category, type, color } = request.data;
+    
+    if (!center_id || !category || !type) {
+        throw new functions.https.HttpsError("invalid-argument", "Faltan criterios de búsqueda.");
+    }
+
+    // Buscamos el tipo opuesto
+    const targetType = (type === 'found') ? 'lost' : 'found';
+    
+    const postsRef = admin.database().ref('posts');
+    
+    // Filtro por centro
+    const snapshot = await postsRef.orderByChild('center_id').equalTo(center_id).once('value');
+    
+    if (!snapshot.exists()) return { matches: [] };
+
+    const allPosts = snapshot.val();
+    const potentialMatches: any[] = [];
+
+    // Fase de refinamiento en memoria
+    for (const id in allPosts) {
+        const post = allPosts[id];
+        
+        if (
+            post.status === 'active' &&
+            post.type === targetType &&
+            post.category === category &&
+            post.is_deleted === false
+        ) {
+            // Cálculo de relevancia básico: coincidencia de categoría y tipo = 1.0
+            let score = 1.0; 
+            
+            // Si el color coincide, aumentamos la confianza
+            if (color && post.description?.toLowerCase().includes(color.toLowerCase())) {
+                score += 0.5;
+            }
+
+            potentialMatches.push({
+                id: post.id,
+                title: post.title,
+                score: score,
+                photo_path: post.photo_path
+            });
+        }
+    }
+
+    // Devolvemos los 5 mejores resultados ordenados por relevancia
+    return {
+        matches: potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5)
+    };
 });
