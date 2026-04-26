@@ -4,7 +4,7 @@ import * as admin from "firebase-admin";
 admin.initializeApp();
 const db = admin.database();
 
-export const secureUniversityRegistration = functions.https.onCall(async (data, context) => {
+export const secureUniversityRegistration = functions.https.onCall(async (request) => {
     const { email, password, name } = request.data;
 
     if (!email || !password || !name) {
