@@ -3,8 +3,7 @@
     "rules": "database/rules/database.rules.json"
   },
   "storage": {
-  "rules": "storage/rules/storage.rules",
-  "bucket": "unilost-and-found-b6bb3.firebasestorage.app"
+  "rules": "storage/rules/storage.rules"
   },
   "functions": [
     {
