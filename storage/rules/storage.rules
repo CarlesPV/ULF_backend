@@ -1,18 +1,27 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isValidImage() {
-      return request.resource.contentType.matches('image/.*') && request.resource.size < 5 * 1024 * 1024;
+    function isImageBelowSize(maxSizeMB) {
+      return request.resource.contentType.matches('image/.*') 
+             && request.resource.size < maxSizeMB * 1024 * 1024;
     }
 
-    match /posts/{postId}/{imageId} {
+    // Carpeta de publicaciones
+    match /posts/{centerId}/{postId}/{imageId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isValidImage();
-      allow delete: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isImageBelowSize(6);
+      allow delete: if isAuthenticated(); // El ownership se valida en el Backend
+    }
+
+    // Carpeta de perfiles
+    match /profiles/{userId}/{imageId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId && isImageBelowSize(3);
     }
   }
 }
