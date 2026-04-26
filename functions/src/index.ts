@@ -1,9 +1,14 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as geofire from "geofire-common";
+import { v2 as translate } from '@google-cloud/translate';
 
 admin.initializeApp();
 const db = admin.database();
+
+// Inicializar el cliente de traducción
+const translateClient = new translate.Translate();
+const TARGET_LANGUAGE = 'en'; // Idioma común para indexar descripciones
 
 /*
     Función segura para el registro de usuarios en universidades
@@ -93,21 +98,43 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
 });
 
 /*
+    NUEVO TRIGGER: Traducir la descripción automáticamente al crear un post
+    Se ejecuta cada vez que se crea un nuevo post en /posts/{postId}
+*/
+export const onPostCreated = functions.database.ref('/posts/{postId}')
+    .onCreate(async (snapshot, context) => {
+        const post = snapshot.val();
+        
+        // Si no hay descripción, no hacemos nada
+        if (!post.description) return null;
+
+        try {
+            // Traducir al idioma común (inglés)
+            const [translation] = await translateClient.translate(post.description, TARGET_LANGUAGE);
+            
+            // Guardar la descripción traducida en la RTDB en minúsculas para búsquedas
+            return snapshot.ref.update({
+                translated_description: translation.toLowerCase()
+            });
+        } catch (error) {
+            console.error(`Error traduciendo el post ${context.params.postId}:`, error);
+            return null;
+        }
+    });
+
+/*
     Función para verificar posibles coincidencias entre publicaciones de objetos perdidos y encontrados
+    VERSIÓN MEJORADA: Ahora busca coincidencias basadas en descripciones traducidas (multiidioma)
 */
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
-    const { center_id, category, type, color } = request.data;
+    const { center_id, category, type, color, description } = request.data;
     
     if (!center_id || !category || !type) {
         throw new functions.https.HttpsError("invalid-argument", "Faltan criterios de búsqueda.");
     }
 
-    // Buscamos el tipo opuesto
     const targetType = (type === 'found') ? 'lost' : 'found';
-    
     const postsRef = admin.database().ref('posts');
-    
-    // Filtro por centro
     const snapshot = await postsRef.orderByChild('center_id').equalTo(center_id).once('value');
     
     if (!snapshot.exists()) return { matches: [] };
@@ -115,7 +142,26 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const allPosts = snapshot.val();
     const potentialMatches: any[] = [];
 
-    // Fase de refinamiento en memoria
+    // 1. Unir el color y la descripción de búsqueda
+    let searchTerms = "";
+    if (color) searchTerms += color + " ";
+    if (description) searchTerms += description;
+
+    // 2. Traducir los términos de búsqueda al idioma común
+    let searchWords: string[] = [];
+    if (searchTerms.trim() !== "") {
+        try {
+            const [translation] = await translateClient.translate(searchTerms.trim(), TARGET_LANGUAGE);
+            // Dividir en palabras y filtrar palabras muy cortas (conectores)
+            searchWords = translation.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        } catch (error) {
+            console.error("Error en la traducción en tiempo real:", error);
+            // Fallback: usar los términos originales si falla la API
+            searchWords = searchTerms.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        }
+    }
+
+    // 3. Fase de refinamiento en memoria
     for (const id in allPosts) {
         const post = allPosts[id];
         
@@ -125,12 +171,21 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
             post.category === category &&
             post.is_deleted === false
         ) {
-            // Cálculo de relevancia básico: coincidencia de categoría y tipo = 1.0
+            // Relevancia base
             let score = 1.0; 
             
-            // Si el color coincide, aumentamos la confianza
-            if (color && post.description?.toLowerCase().includes(color.toLowerCase())) {
-                score += 0.5;
+            // Evaluamos coincidencias contra la descripción ya traducida del post
+            const targetDesc = post.translated_description || post.description?.toLowerCase() || "";
+            
+            if (searchWords.length > 0 && targetDesc) {
+                let matchCount = 0;
+                for (const word of searchWords) {
+                    if (targetDesc.includes(word)) {
+                        matchCount++;
+                    }
+                }
+                // Aumentamos el score de forma proporcional a las palabras que hicieron "match"
+                score += (matchCount * 0.5); 
             }
 
             potentialMatches.push({
@@ -142,7 +197,6 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         }
     }
 
-    // Devolvemos los 5 mejores resultados ordenados por relevancia
     return {
         matches: potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5)
     };
