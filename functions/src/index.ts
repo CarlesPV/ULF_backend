@@ -1,10 +1,13 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import * as geofire from "geofire-common";
 
 admin.initializeApp();
 const db = admin.database();
 
-// Función segura para el registro de usuarios en universidades
+/*
+    Función segura para el registro de usuarios en universidades
+*/
 export const secureUniversityRegistration = functions.https.onCall(async (request) => {
     const { email, password, name } = request.data;
 
@@ -89,7 +92,9 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
     }
 });
 
-// Función para verificar posibles coincidencias entre publicaciones de objetos perdidos y encontrados
+/*
+    Función para verificar posibles coincidencias entre publicaciones de objetos perdidos y encontrados
+*/
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const { center_id, category, type, color } = request.data;
     
@@ -141,4 +146,72 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     return {
         matches: potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5)
     };
+});
+
+/*
+    Función para crear un nuevo reporte de objeto perdido o encontrado.
+*/
+// Definimos una interfaz para el payload esperado
+interface PostReportPayload {
+    center_id: string;
+    type: 'lost' | 'found';
+    title: string;
+    description?: string;
+    category: string;
+    lat: number;
+    lng: number;
+    photo_path?: string;
+}
+
+export const createPostReport = functions.https.onCall(async (request) => {
+    // 1. Validación de Autenticación usando el objeto 'request'
+    if (!request.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Debes iniciar sesión.");
+    }
+
+    // 2. Casteo de los datos a nuestra interfaz definida para mayor seguridad y claridad
+    const data = request.data as PostReportPayload;
+    const uid = request.auth.uid;
+
+    const { center_id, type, title, description, category, lat, lng, photo_path } = data;
+
+    // 3. Validación de datos mínimos requeridos
+    if (!center_id || !type || !category || !title || lat === undefined || lng === undefined) {
+        throw new functions.https.HttpsError("invalid-argument", "Datos incompletos para el reporte.");
+    }
+
+    // 4. Generar Geohash para futuras consultas espaciales
+    const geohash = geofire.geohashForLocation([lat, lng]);
+
+    const postsRef = admin.database().ref('posts');
+    const newPostRef = postsRef.push();
+    const postId = newPostRef.key;
+
+    const payload = {
+        id: postId,
+        user_id: uid,
+        center_id: center_id,
+        type: type, // 'lost' o 'found'
+        title: title,
+        description: description || "",
+        category: category,
+        status: "active",
+        coords: {
+            lat: lat,
+            lng: lng,
+            geohash: geohash
+        },
+        photo_path: photo_path || "",
+        created_at: admin.database.ServerValue.TIMESTAMP,
+        updated_at: admin.database.ServerValue.TIMESTAMP,
+        is_deleted: false
+    };
+
+    try {
+        await newPostRef.set(payload);
+        return { success: true, post_id: postId };
+    } catch (error) {
+        console.error("Error guardando post:", error);
+        throw new functions.https.HttpsError("internal", "Error al procesar el reporte.");
+    }
 });

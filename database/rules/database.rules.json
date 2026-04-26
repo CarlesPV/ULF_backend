@@ -26,7 +26,7 @@
 
         "posts": {
             ".read": "auth != null",
-            ".indexOn": ["center_id", "type", "status", "category", "user_id"],
+            ".indexOn": ["center_id", "type", "status", "category", "user_id", "created_at", "coords/geohash"],
             "$post_id": {
                 ".write": "auth != null && (!data.exists() || data.child('user_id').val() === auth.uid) && (!newData.exists() || newData.child('user_id').val() === auth.uid)",
                 ".validate": "newData.hasChildren(['id', 'user_id', 'center_id', 'type', 'title', 'category', 'status', 'created_at', 'updated_at', 'is_deleted']) && (newData.child('type').val() === 'lost' || newData.child('type').val() === 'found') && (newData.child('status').val() === 'active' || newData.child('status').val() === 'matched' || newData.child('status').val() === 'returned') && newData.child('created_at').isNumber() && newData.child('updated_at').isNumber() && newData.child('is_deleted').isBoolean()",
