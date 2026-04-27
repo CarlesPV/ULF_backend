@@ -2,7 +2,7 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as geofire from "geofire-common";
 import { v2 as translate } from '@google-cloud/translate';
-import { onValueCreated } from "firebase-functions/v2/database";
+import { onValueCreated, onValueUpdated, onValueDeleted } from "firebase-functions/v2/database";
 
 admin.initializeApp();
 const db = admin.database();
@@ -99,25 +99,68 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
 });
 
 /*
-    NUEVO TRIGGER: Traducir la descripción automáticamente al crear un post
-    Se ejecuta cada vez que se crea un nuevo post en /posts/{postId}
+    TRIGGER: Al crear un post:
+      - Lo añade al índice /active_posts/{center_id}/{post_id} si está activo.
+      - Traduce su descripción a un idioma común para búsquedas multiidioma.
+    Ambas tareas son independientes: si la traducción falla, el post sigue indexado.
 */
-export const onPostCreated = onValueCreated('/posts/{postId}', async (event) => {
+export const onPostCreated = onValueCreated('/posts/{postId}', async (event: any) => {
     const snapshot = event.data;
     const post = snapshot.val();
-    
-    if (!post.description) return null;
+    if (!post?.center_id) return null;
 
-    try {
-        const [translation] = await translateClient.translate(post.description, TARGET_LANGUAGE);
-        
-        return snapshot.ref.update({
-            translated_description: translation.toLowerCase()
-        });
-    } catch (error) {
-        console.error(`Error traduciendo el post ${event.params.postId}:`, error);
-        return null;
+    const tasks: Promise<any>[] = [];
+
+    if (post.status === 'active' && post.is_deleted === false) {
+        tasks.push(
+            admin.database()
+                .ref(`active_posts/${post.center_id}/${event.params.postId}`)
+                .set(post.created_at)
+        );
     }
+
+    if (post.description) {
+        tasks.push(
+            translateClient.translate(post.description, TARGET_LANGUAGE)
+                .then(([translation]: [string]) => snapshot.ref.update({
+                    translated_description: translation.toLowerCase()
+                }))
+                .catch((error: any) => {
+                    console.error(`Error traduciendo el post ${event.params.postId}:`, error);
+                })
+        );
+    }
+
+    await Promise.all(tasks);
+    return null;
+});
+
+/*
+    TRIGGER: Mantiene el índice /active_posts/{center_id}/{post_id} sincronizado.
+    Cuando un post cambia de estado (matched, returned) o se borra lógicamente,
+    se elimina del índice. Así getFilteredFeed solo escanea posts activos.
+*/
+export const onPostUpdated = onValueUpdated('/posts/{postId}', async (event: any) => {
+    const after = event.data.after.val();
+    if (!after?.center_id) return null;
+
+    const indexRef = admin.database().ref(`active_posts/${after.center_id}/${event.params.postId}`);
+    const isActive = after.status === 'active' && after.is_deleted === false;
+
+    return isActive ? indexRef.set(after.created_at) : indexRef.remove();
+});
+
+/*
+    TRIGGER: Limpia el índice /active_posts cuando un post se borra físicamente,
+    evitando entradas huérfanas que apunten a posts ya inexistentes.
+*/
+export const onPostDeleted = onValueDeleted('/posts/{postId}', async (event: any) => {
+    const before = event.data.val();
+    if (!before?.center_id) return null;
+
+    return admin.database()
+        .ref(`active_posts/${before.center_id}/${event.params.postId}`)
+        .remove();
 });
 
 /*
@@ -266,4 +309,82 @@ export const createPostReport = functions.https.onCall(async (request) => {
         console.error("Error guardando post:", error);
         throw new functions.https.HttpsError("internal", "Error al procesar el reporte.");
     }
+});
+
+/*
+    Función para obtener el feed filtrado por universidad, tipo, categoría y palabras clave.
+    Usa el índice /active_posts/{center_id} para escanear solo posts activos,
+    evitando cargar el historial acumulado de posts resueltos o eliminados.
+*/
+interface FeedFilterPayload {
+    center_id: string;
+    type: 'lost' | 'found';
+    category?: string;
+    search_term?: string;
+    max_results?: number;
+}
+
+export const getFilteredFeed = functions.https.onCall(async (request: any) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Debes iniciar sesión.");
+    }
+
+    const data = request.data as FeedFilterPayload;
+    const { center_id, type, category, search_term, max_results = 50 } = data;
+
+    if (!center_id || !type) {
+        throw new functions.https.HttpsError("invalid-argument", "center_id y type son obligatorios.");
+    }
+
+    // 1. Leer solo las keys activas del índice secundario (no los posts completos aún)
+    const activeKeysSnap = await admin.database()
+        .ref(`active_posts/${center_id}`)
+        .once('value');
+
+    if (!activeKeysSnap.exists()) return { feed: [] };
+
+    // 2. Recuperar los posts completos en paralelo usando las keys del índice
+    const postIds = Object.keys(activeKeysSnap.val());
+    const postFetches = postIds.map(id =>
+        admin.database().ref(`posts/${id}`).once('value')
+    );
+    const postSnaps = await Promise.all(postFetches);
+
+    // 3. Preparar palabras clave traducidas al idioma común para match multiidioma
+    let searchWords: string[] = [];
+    if (search_term?.trim()) {
+        try {
+            const [translation] = await translateClient.translate(search_term.trim(), TARGET_LANGUAGE);
+            searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+        } catch (error) {
+            console.error("Error traduciendo término de búsqueda:", error);
+            searchWords = search_term.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+        }
+    }
+
+    // 4. Filtrado en memoria del servidor
+    const filteredPosts: any[] = [];
+
+    for (const snap of postSnaps) {
+        if (!snap.exists()) continue;
+        const post = snap.val();
+
+        if (post.type !== type) continue;
+        if (category && post.category !== category) continue;
+
+        if (searchWords.length > 0) {
+            const targetText = `${post.title || ''} ${post.translated_description || post.description || ''}`.toLowerCase();
+            const hasMatch = searchWords.some((word: string) => targetText.includes(word));
+            if (!hasMatch) continue;
+        }
+
+        filteredPosts.push(post);
+    }
+
+    // 5. Ordenar por fecha descendente y limitar resultados
+    const feed = filteredPosts
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, max_results);
+
+    return { feed };
 });

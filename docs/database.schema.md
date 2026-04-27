@@ -112,6 +112,27 @@ Catálogo de objetos.
 }
 ```
 
+## /active_posts/{center_id}/{post_id}
+Índice secundario mantenido por Cloud Functions. Contiene únicamente las publicaciones con `status === 'active'` y `is_deleted === false`, agrupadas por centro. Permite que `getFilteredFeed` escanee solo los posts vigentes de una universidad sin tener que cargar el histórico completo de `/posts`.
+
+Esta colección **no se escribe nunca desde el cliente**: los triggers `onPostCreated`, `onPostUpdated` y `onPostDeleted` la sincronizan automáticamente.
+
+### Estructura de datos
+
+| Campo | Tipo | Descripción y validaciones |
+| :--- | :--- | :--- |
+| `{post_id}` | `number` | El valor almacenado es el `created_at` del post (Unix ms), útil para ordenar resultados. La presencia de la clave es lo que indica que el post está activo. |
+
+### Ejemplo JSON
+```json
+"active_posts": {
+  "center_id_001": {
+    "post_xyz789": 1705325000000,
+    "post_abc456": 1705326500000
+  }
+}
+```
+
 ## /post_views/{post_id}/{user_id}
 Estructura para registrar las visitas de los usuarios a los posts.
 
