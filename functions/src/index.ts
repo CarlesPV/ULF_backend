@@ -122,7 +122,7 @@ export const onPostCreated = onValueCreated('/posts/{postId}', async (event: any
     if (post.description) {
         tasks.push(
             translateClient.translate(post.description, TARGET_LANGUAGE)
-                .then(([translation]: [string]) => snapshot.ref.update({
+                .then(([translation]: [string, any]) => snapshot.ref.update({
                     translated_description: translation.toLowerCase()
                 }))
                 .catch((error: any) => {
