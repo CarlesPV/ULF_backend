@@ -322,6 +322,9 @@ interface FeedFilterPayload {
     category?: string;
     search_term?: string;
     max_results?: number;
+    user_lat?: number;
+    user_lng?: number;
+    sort_by?: 'date' | 'distance';
 }
 
 export const getFilteredFeed = functions.https.onCall(async (request: any) => {
@@ -330,7 +333,7 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     }
 
     const data = request.data as FeedFilterPayload;
-    const { center_id, type, category, search_term, max_results = 50 } = data;
+    const { center_id, type, category, search_term, max_results = 50, user_lat, user_lng, sort_by } = data;
 
     if (!center_id || !type) {
         throw new functions.https.HttpsError("invalid-argument", "center_id y type son obligatorios.");
@@ -381,10 +384,37 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         filteredPosts.push(post);
     }
 
-    // 5. Ordenar por fecha descendente y limitar resultados
-    const feed = filteredPosts
-        .sort((a, b) => b.created_at - a.created_at)
-        .slice(0, max_results);
+    // 5. Aplicar ordenamiento según sort_by e inyectar distance_km si es necesario
+    let feed: any[] = [];
+
+    if (sort_by === 'distance' && user_lat !== undefined && user_lng !== undefined) {
+        // Ordenar por distancia geográfica
+        const postsWithDistance = filteredPosts
+            .map((post: any) => {
+                // Si el post no tiene coords válidas, excluirlo del resultado
+                if (!post.coords || post.coords.lat === undefined || post.coords.lng === undefined) {
+                    return null;
+                }
+                const distanceKm = geofire.distanceBetween(
+                    [user_lat, user_lng],
+                    [post.coords.lat, post.coords.lng]
+                );
+                return {
+                    ...post,
+                    distance_km: distanceKm
+                };
+            })
+            .filter((post: any) => post !== null) // Filtrar posts sin coords válidas
+            .sort((a: any, b: any) => a.distance_km - b.distance_km)
+            .slice(0, max_results);
+
+        feed = postsWithDistance;
+    } else {
+        // Ordenar por fecha descendente (comportamiento por defecto)
+        feed = filteredPosts
+            .sort((a, b) => b.created_at - a.created_at)
+            .slice(0, max_results);
+    }
 
     return { feed };
 });
