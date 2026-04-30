@@ -170,6 +170,10 @@ export const onPostDeleted = onValueDeleted('/posts/{postId}', async (event: any
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const { center_id, category, type, color, description } = request.data;
     
+    if (!request.auth || !request.auth.token.email_verified) {
+        throw new functions.https.HttpsError("permission-denied", "Debes verificar tu correo para buscar coincidencias.");
+    }
+
     if (!center_id || !category || !type) {
         throw new functions.https.HttpsError("invalid-argument", "Faltan criterios de búsqueda.");
     }
@@ -260,8 +264,8 @@ interface PostReportPayload {
 
 export const createPostReport = functions.https.onCall(async (request) => {
     // 1. Validación de Autenticación usando el objeto 'request'
-    if (!request.auth) {
-        throw new functions.https.HttpsError("unauthenticated", "Debes iniciar sesión.");
+    if (!request.auth || !request.auth.token.email_verified) {
+        throw new functions.https.HttpsError("permission-denied", "Debes verificar tu correo para publicar.");
     }
 
     // 2. Casteo de los datos a nuestra interfaz definida para mayor seguridad y claridad
@@ -328,8 +332,8 @@ interface FeedFilterPayload {
 }
 
 export const getFilteredFeed = functions.https.onCall(async (request: any) => {
-    if (!request.auth) {
-        throw new functions.https.HttpsError("unauthenticated", "Debes iniciar sesión.");
+    if (!request.auth || !request.auth.token.email_verified) {
+        throw new functions.https.HttpsError("permission-denied", "Debes verificar tu correo para ver el feed.");
     }
 
     const data = request.data as FeedFilterPayload;
@@ -417,4 +421,46 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     }
 
     return { feed };
+});
+
+/**
+ * Elimina a todos los usuarios que llevan más de 48 horas registrados y no han verificado su correo electrónico.
+ */
+export const purgeUnverifiedAccounts = functions.pubsub
+    .schedule('0 2 * * *') // Cron format: a las 2:00 AM todos los días
+    .timeZone('Europe/Madrid') 
+    .onRun(async (context) => {
+        const auth = admin.auth();
+        const db = admin.database();
+        const UNVERIFIED_TTL = 48 * 60 * 60 * 1000; // 48 horas
+        const now = Date.now();
+        
+        let nextPageToken;
+        let deletedCount = 0;
+
+        try {
+            do {
+                const listUsersResult = await auth.listUsers(1000, nextPageToken);
+                
+                for (const userRecord of listUsersResult.users) {
+                    const creationTime = new Date(userRecord.metadata.creationTime).getTime();
+                    const isExpired = (now - creationTime) > UNVERIFIED_TTL;
+
+                    if (!userRecord.emailVerified && isExpired) {
+                        // 1. Eliminamos de Auth
+                        await auth.deleteUser(userRecord.uid);
+                        // 2. Eliminamos rastro en RTDB 
+                        await db.ref(`users/${userRecord.uid}`).remove();
+                        deletedCount++;
+                    }
+                }
+                nextPageToken = listUsersResult.pageToken;
+            } while (nextPageToken);
+
+            console.log(`Purga completada. Cuentas eliminadas: ${deletedCount}`);
+            return null;
+        } catch (error) {
+            console.error("Error crítico purgado usuarios:", error);
+            return null;
+        }
 });
