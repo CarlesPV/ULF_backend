@@ -463,3 +463,39 @@ export const purgeUnverifiedAccounts = onSchedule({
         console.error("Error crítico purgado usuarios:", error);
     }
 });
+
+/*
+    TRIGGER: Al crear un mensaje:
+      - Actualiza el nodo padre del chat (/chats/{chatId}) con el último mensaje y su timestamp.
+    Esto permite ordenar la bandeja de entrada sin descargar la colección completa de mensajes.
+*/
+export const onMessageCreated = onValueCreated('/messages/{chatId}/{messageId}', async (event: any) => {
+    const snapshot = event.data;
+    const message = snapshot.val();
+    
+    // Validar que exista el mensaje y tenga los campos requeridos
+    if (!message?.text || message.timestamp === undefined) {
+        return null;
+    }
+
+    const { chatId } = event.params;
+    
+    // Truncar el mensaje a 40 caracteres si es necesario
+    let lastMessage = message.text;
+    if (lastMessage.length > 40) {
+        lastMessage = lastMessage.substring(0, 40) + "...";
+    }
+
+    try {
+        // Actualizar el chat padre con el último mensaje y su timestamp
+        await admin.database().ref(`chats/${chatId}`).update({
+            last_message: lastMessage,
+            last_message_time: message.timestamp
+        });
+        
+        return null;
+    } catch (error) {
+        console.error(`Error updating chat ${chatId}:`, error);
+        return null;
+    }
+});
