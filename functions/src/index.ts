@@ -4,6 +4,8 @@ import * as geofire from "geofire-common";
 import { v2 as translate } from '@google-cloud/translate';
 import { onValueCreated, onValueUpdated, onValueDeleted } from "firebase-functions/v2/database";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+const vision = require('@google-cloud/vision');
+import { onObjectFinalized } from "firebase-functions/v2/storage";
 
 admin.initializeApp();
 const db = admin.database();
@@ -11,6 +13,9 @@ const db = admin.database();
 // Inicializar el cliente de traducción
 const translateClient = new translate.Translate();
 const TARGET_LANGUAGE = 'en'; // Idioma común para indexar descripciones
+
+// Inicializar el cliente de Cloud Vision para análisis de imágenes
+const visionClient = new vision.ImageAnnotatorClient();
 
 /*
     Función segura para el registro de usuarios en universidades
@@ -465,8 +470,46 @@ export const purgeUnverifiedAccounts = onSchedule({
 });
 
 /*
+    Cloud Function Callable para guardar el token FCM del usuario.
+    Permite que el cliente registre su token para recibir notificaciones push.
+*/
+export const saveFcmToken = functions.https.onCall(async (request) => {
+    // 1. Validar que el usuario esté autenticado
+    if (!request.auth || !request.auth.token.email_verified) {
+        throw new functions.https.HttpsError(
+            "permission-denied",
+            "Debes estar autenticado y verificar tu correo para recibir notificaciones."
+        );
+    }
+
+    const { token } = request.data;
+    if (!token || typeof token !== 'string') {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Token FCM inválido o no proporcionado."
+        );
+    }
+
+    const uid = request.auth.uid;
+
+    try {
+        // 2. Guardar el token en /users/{uid}/fcm_tokens/{token}: true
+        await admin.database().ref(`users/${uid}/fcm_tokens/${token}`).set(true);
+        return { success: true, message: "Token registrado exitosamente." };
+    } catch (error) {
+        console.error(`Error guardando FCM token para usuario ${uid}:`, error);
+        throw new functions.https.HttpsError(
+            "internal",
+            "Error al registrar el token de notificaciones."
+        );
+    }
+});
+
+/*
     TRIGGER: Al crear un mensaje:
       - Actualiza el nodo padre del chat (/chats/{chatId}) con el último mensaje y su timestamp.
+      - Envía notificaciones push a todos los miembros del chat (excepto el remitente)
+        que tengan push_notifications habilitado en su perfil.
     Esto permite ordenar la bandeja de entrada sin descargar la colección completa de mensajes.
 */
 export const onMessageCreated = onValueCreated('/messages/{chatId}/{messageId}', async (event: any) => {
@@ -479,6 +522,7 @@ export const onMessageCreated = onValueCreated('/messages/{chatId}/{messageId}',
     }
 
     const { chatId } = event.params;
+    const senderId = message.sender_id;
     
     // Truncar el mensaje a 40 caracteres si es necesario
     let lastMessage = message.text;
@@ -487,15 +531,180 @@ export const onMessageCreated = onValueCreated('/messages/{chatId}/{messageId}',
     }
 
     try {
-        // Actualizar el chat padre con el último mensaje y su timestamp
+        // 1. Actualizar el chat padre con el último mensaje y su timestamp
         await admin.database().ref(`chats/${chatId}`).update({
             last_message: lastMessage,
             last_message_time: message.timestamp
         });
+
+        // 2. Enviar notificaciones push a los miembros del chat
+        try {
+            // Obtener los miembros del chat
+            const chatSnap = await admin.database().ref(`chats/${chatId}/members`).once('value');
+            if (!chatSnap.exists()) {
+                return null; // No hay miembros registrados
+            }
+
+            const members = chatSnap.val(); // { uid: true, ... }
+            const memberIds = Object.keys(members);
+
+            // Para cada miembro (excepto el remitente), enviar notificación si lo tiene habilitado
+            const notificationPromises = memberIds
+                .filter(memberId => memberId !== senderId) // Excluir al remitente
+                .map(async (memberId) => {
+                    try {
+                        // Verificar si el usuario tiene push_notifications habilitado
+                        const userSettingsSnap = await admin.database()
+                            .ref(`users/${memberId}/settings/push_notifications`)
+                            .once('value');
+
+                        if (userSettingsSnap.val() !== true) {
+                            return; // Usuario no tiene notificaciones habilitadas
+                        }
+
+                        // Obtener todos los tokens FCM del usuario
+                        const fcmTokensSnap = await admin.database()
+                            .ref(`users/${memberId}/fcm_tokens`)
+                            .once('value');
+
+                        if (!fcmTokensSnap.exists()) {
+                            return; // Usuario no tiene tokens registrados
+                        }
+
+                        const fcmTokens = Object.keys(fcmTokensSnap.val());
+
+                        // Enviar notificación a cada token
+                        return Promise.all(
+                            fcmTokens.map((token) =>
+                                admin.messaging().send({
+                                    token: token,
+                                    notification: {
+                                        title: "Nuevo mensaje",
+                                        body: message.text.substring(0, 100) // Limitar a 100 caracteres para notificación
+                                    },
+                                    data: {
+                                        chatId: chatId,
+                                        messageId: event.params.messageId
+                                    }
+                                }).catch((error) => {
+                                    console.warn(`Error enviando notificación al token ${token}:`, error);
+                                    // Opcionalmente, eliminar tokens inválidos
+                                    if (error.code === 'messaging/invalid-registration-token') {
+                                        return admin.database()
+                                            .ref(`users/${memberId}/fcm_tokens/${token}`)
+                                            .remove();
+                                    }
+                                    return null;
+                                })
+                            )
+                        );
+                    } catch (memberError) {
+                        console.error(`Error procesando notificaciones para usuario ${memberId}:`, memberError);
+                        // No interrumpir el flujo principal si falla para un miembro
+                        return null;
+                    }
+                });
+
+            // Esperar a que todas las notificaciones se envíen (sin bloquear el resultado)
+            await Promise.all(notificationPromises).catch((error) => {
+                console.error("Error en el envío de notificaciones:", error);
+            });
+        } catch (notificationError) {
+            console.error(`Error en el sistema de notificaciones para chat ${chatId}:`, notificationError);
+            // No interrumpir la actualización del chat si falla el sistema de notificaciones
+        }
         
         return null;
     } catch (error) {
         console.error(`Error updating chat ${chatId}:`, error);
+        return null;
+    }
+});
+
+/*
+    TRIGGER: Al subir una imagen a Storage:
+      - Si pertenece a un post (ruta comienza con 'posts/'), analiza la imagen usando Vision API.
+      - Extrae los labels detectados, los traduce al idioma común ('en'),
+        y guarda las palabras clave en el campo 'vision_labels' del post en RTDB.
+    Esto mejora el matching de posts usando características visuales detectadas automáticamente.
+*/
+export const onImageUploaded = onObjectFinalized(async (event) => {
+    const filePath = event.data.name; // Ruta completa del archivo en Storage
+    const bucket = event.data.bucket; // Bucket del Storage
+
+    // 1. Verificar que la imagen pertenece a un post
+    if (!filePath.startsWith('posts/')) {
+        return null; // No es una imagen de post, ignorar
+    }
+
+    try {
+        // Extraer el postId de la ruta (ej: posts/{postId}/image.jpg)
+        const pathParts = filePath.split('/');
+        if (pathParts.length < 3) {
+            console.warn(`Ruta de imagen inválida: ${filePath}`);
+            return null;
+        }
+        const postId = pathParts[1];
+
+        // 2. Usar Cloud Vision para detectar labels en la imagen
+        const imageRequest = {
+            image: {
+                source: {
+                    gcsImageUri: `gs://${bucket}/${filePath}`
+                }
+            }
+        };
+
+        const visionResponse = await visionClient.labelDetection(imageRequest);
+        const labels = visionResponse[0]?.labelAnnotations || [];
+
+        if (labels.length === 0) {
+            console.log(`No se detectaron labels en la imagen ${filePath}`);
+            return null;
+        }
+
+        // 3. Extraer descripciones de los labels detectados
+        const labelDescriptions = labels
+            .map((label: any) => label.description)
+            .filter((desc: any) => desc && typeof desc === 'string');
+
+        if (labelDescriptions.length === 0) {
+            return null;
+        }
+
+        // 4. Traducir los labels al idioma común ('en')
+        let translatedLabels: string[] = [];
+        try {
+            const translationText = labelDescriptions.join(', ');
+            const [translation] = await translateClient.translate(translationText, TARGET_LANGUAGE);
+            // Dividir por comas y limpiar espacios
+            translatedLabels = translation
+                .split(',')
+                .map((label: string) => label.trim().toLowerCase())
+                .filter((label: string) => label.length > 0);
+        } catch (translationError) {
+            console.error(`Error traduciendo labels para imagen ${filePath}:`, translationError);
+            // Fallback: usar los labels originales en minúsculas
+            translatedLabels = labelDescriptions
+                .map((label: string) => label.toLowerCase())
+                .filter((label: string) => label.length > 0);
+        }
+
+        // 5. Guardar los vision_labels en el nodo del post
+        try {
+            await admin.database()
+                .ref(`posts/${postId}/vision_labels`)
+                .set(translatedLabels);
+            console.log(`Vision labels guardados para post ${postId}: ${translatedLabels.join(', ')}`);
+        } catch (dbError) {
+            console.error(`Error guardando vision_labels en RTDB para post ${postId}:`, dbError);
+            // Continuar sin interrumpir aunque falle la escritura en RTDB
+        }
+
+        return null;
+    } catch (error) {
+        console.error(`Error procesando imagen de Storage (${filePath}):`, error);
+        // No interrumpir el flujo principal si falla el análisis de Vision
         return null;
     }
 });
