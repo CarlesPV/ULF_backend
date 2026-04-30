@@ -2,24 +2,26 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Carpeta de publicaciones
+    // Función reutilizable y centralizada
+    function isVerifiedUser() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    // Objetos perdidos / encontrados
     match /posts/{fileName} {
-      allow write: if request.auth != null 
-                   // 1. Previene subida de archivos gigantes (Límite: 6MB)
+      allow read: if isVerifiedUser();
+      allow write: if isVerifiedUser() 
                    && request.resource.size < 6 * 1024 * 1024
-                   // 2. Lista blanca de formatos seguros mediante Regex
                    && request.resource.contentType.matches('image/(jpeg|png|webp)');
-                   
-      allow read: if request.auth != null;
     }
     
-    // Carpeta de perfiles
+    // Fotos de perfil
     match /profiles/{userId} {
-      allow write: if request.auth != null 
+      allow read: if isVerifiedUser();
+      allow write: if isVerifiedUser() 
                    && request.auth.uid == userId
-                   && request.resource.size < 3 * 1024 * 1024 // 3MB para perfiles
+                   && request.resource.size < 3 * 1024 * 1024
                    && request.resource.contentType.matches('image/(jpeg|png|webp)');
-      allow read: if request.auth != null;
     }
   }
 }
