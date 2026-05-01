@@ -13,7 +13,7 @@
         "users": {
             "$user_id": {
                 ".write": "auth != null && auth.uid === $user_id && auth.token.email_verified === true",
-                ".read": "auth != null && auth.token.email_verified === true",
+        ".read": "auth != null && auth.uid === $user_id",
                 ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $user_id",
                 "role": {
                     ".validate": "(!data.exists() && newData.val() === 'student') || (data.exists() && newData.val() === data.val())"
