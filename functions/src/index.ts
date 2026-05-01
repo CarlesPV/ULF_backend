@@ -3,6 +3,9 @@ import * as admin from "firebase-admin";
 import * as geofire from "geofire-common";
 import { v2 as translate } from '@google-cloud/translate';
 import { onValueCreated, onValueUpdated, onValueDeleted } from "firebase-functions/v2/database";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+const vision = require('@google-cloud/vision');
+import { onObjectFinalized } from "firebase-functions/v2/storage";
 
 admin.initializeApp();
 const db = admin.database();
@@ -10,6 +13,9 @@ const db = admin.database();
 // Inicializar el cliente de traducción
 const translateClient = new translate.Translate();
 const TARGET_LANGUAGE = 'en'; // Idioma común para indexar descripciones
+
+// Inicializar el cliente de Cloud Vision para análisis de imágenes
+const visionClient = new vision.ImageAnnotatorClient();
 
 /*
     Función segura para el registro de usuarios en universidades
@@ -326,6 +332,9 @@ interface FeedFilterPayload {
     category?: string;
     search_term?: string;
     max_results?: number;
+    user_lat?: number;
+    user_lng?: number;
+    sort_by?: 'date' | 'distance';
 }
 
 export const getFilteredFeed = functions.https.onCall(async (request: any) => {
@@ -334,7 +343,7 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     }
 
     const data = request.data as FeedFilterPayload;
-    const { center_id, type, category, search_term, max_results = 50 } = data;
+    const { center_id, type, category, search_term, max_results = 50, user_lat, user_lng, sort_by } = data;
 
     if (!center_id || !type) {
         throw new functions.https.HttpsError("invalid-argument", "center_id y type son obligatorios.");
@@ -385,10 +394,37 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         filteredPosts.push(post);
     }
 
-    // 5. Ordenar por fecha descendente y limitar resultados
-    const feed = filteredPosts
-        .sort((a, b) => b.created_at - a.created_at)
-        .slice(0, max_results);
+    // 5. Aplicar ordenamiento según sort_by e inyectar distance_km si es necesario
+    let feed: any[] = [];
+
+    if (sort_by === 'distance' && user_lat !== undefined && user_lng !== undefined) {
+        // Ordenar por distancia geográfica
+        const postsWithDistance = filteredPosts
+            .map((post: any) => {
+                // Si el post no tiene coords válidas, excluirlo del resultado
+                if (!post.coords || post.coords.lat === undefined || post.coords.lng === undefined) {
+                    return null;
+                }
+                const distanceKm = geofire.distanceBetween(
+                    [user_lat, user_lng],
+                    [post.coords.lat, post.coords.lng]
+                );
+                return {
+                    ...post,
+                    distance_km: distanceKm
+                };
+            })
+            .filter((post: any) => post !== null) // Filtrar posts sin coords válidas
+            .sort((a: any, b: any) => a.distance_km - b.distance_km)
+            .slice(0, max_results);
+
+        feed = postsWithDistance;
+    } else {
+        // Ordenar por fecha descendente (comportamiento por defecto)
+        feed = filteredPosts
+            .sort((a, b) => b.created_at - a.created_at)
+            .slice(0, max_results);
+    }
 
     return { feed };
 });
@@ -396,41 +432,243 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
 /**
  * Elimina a todos los usuarios que llevan más de 48 horas registrados y no han verificado su correo electrónico.
  */
-export const purgeUnverifiedAccounts = functions.pubsub
-    .schedule('0 2 * * *') // Cron format: a las 2:00 AM todos los días
-    .timeZone('Europe/Madrid') 
-    .onRun(async (context) => {
-        const auth = admin.auth();
-        const db = admin.database();
-        const UNVERIFIED_TTL = 48 * 60 * 60 * 1000; // 48 horas
-        const now = Date.now();
-        
-        let nextPageToken;
-        let deletedCount = 0;
+export const purgeUnverifiedAccounts = onSchedule({
+    schedule: '0 2 * * *', // Cron format: a las 2:00 AM todos los días
+    timeZone: 'Europe/Madrid'
+}, async (event) => {
+    const auth = admin.auth();
+    const db = admin.database();
+    const UNVERIFIED_TTL = 48 * 60 * 60 * 1000; // 48 horas
+    const now = Date.now();
+    
+    let nextPageToken: string | undefined; 
+    let deletedCount = 0;
 
-        try {
-            do {
-                const listUsersResult = await auth.listUsers(1000, nextPageToken);
-                
-                for (const userRecord of listUsersResult.users) {
-                    const creationTime = new Date(userRecord.metadata.creationTime).getTime();
-                    const isExpired = (now - creationTime) > UNVERIFIED_TTL;
+    try {
+        do {
+            const listUsersResult = await auth.listUsers(1000, nextPageToken);
+            
+            for (const userRecord of listUsersResult.users) {
+                const creationTime = new Date(userRecord.metadata.creationTime).getTime();
+                const isExpired = (now - creationTime) > UNVERIFIED_TTL;
 
-                    if (!userRecord.emailVerified && isExpired) {
-                        // 1. Eliminamos de Auth
-                        await auth.deleteUser(userRecord.uid);
-                        // 2. Eliminamos rastro en RTDB 
-                        await db.ref(`users/${userRecord.uid}`).remove();
-                        deletedCount++;
-                    }
+                if (!userRecord.emailVerified && isExpired) {
+                    // 1. Eliminamos de Auth
+                    await auth.deleteUser(userRecord.uid);
+                    // 2. Eliminamos rastro en RTDB 
+                    await db.ref(`users/${userRecord.uid}`).remove();
+                    deletedCount++;
                 }
-                nextPageToken = listUsersResult.pageToken;
-            } while (nextPageToken);
+            }
+            nextPageToken = listUsersResult.pageToken;
+        } while (nextPageToken);
 
-            console.log(`Purga completada. Cuentas eliminadas: ${deletedCount}`);
+        console.log(`Purga completada. Cuentas eliminadas: ${deletedCount}`);
+    } catch (error) {
+        console.error("Error crítico purgado usuarios:", error);
+    }
+});
+
+/*
+    Cloud Function Callable para guardar el token FCM del usuario.
+    Permite que el cliente registre su token para recibir notificaciones push.
+*/
+export const saveFcmToken = functions.https.onCall(async (request) => {
+    // 1. Validar que el usuario esté autenticado
+    if (!request.auth || !request.auth.token.email_verified) {
+        throw new functions.https.HttpsError(
+            "permission-denied",
+            "Debes estar autenticado y verificar tu correo para recibir notificaciones."
+        );
+    }
+
+    const { token } = request.data;
+    if (!token || typeof token !== 'string') {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Token FCM inválido o no proporcionado."
+        );
+    }
+
+    const uid = request.auth.uid;
+
+    try {
+        // 2. Guardar el token en /users/{uid}/fcm_tokens/{token}: true
+        await admin.database().ref(`users/${uid}/fcm_tokens/${token}`).set(true);
+        return { success: true, message: "Token registrado exitosamente." };
+    } catch (error) {
+        console.error(`Error guardando FCM token para usuario ${uid}:`, error);
+        throw new functions.https.HttpsError(
+            "internal",
+            "Error al registrar el token de notificaciones."
+        );
+    }
+});
+
+/*
+    TRIGGER: Al crear un mensaje:
+      - Actualiza el nodo padre del chat (/chats/{chatId}) con el último mensaje y su timestamp.
+      - Envía notificaciones push a todos los miembros del chat (excepto el remitente)
+        que tengan push_notifications habilitado en su perfil.
+    Esto permite ordenar la bandeja de entrada sin descargar la colección completa de mensajes.
+*/
+export const onMessageCreated = onValueCreated('/messages/{chatId}/{messageId}', async (event: any) => {
+    const snapshot = event.data;
+    const message = snapshot.val();
+    
+    // Validar que exista el mensaje y tenga los campos requeridos
+    if (!message?.text || message.timestamp === undefined) {
+        return null;
+    }
+
+    const { chatId } = event.params;
+    const senderId = message.sender_id;
+    
+    // Truncar el mensaje a 40 caracteres si es necesario
+    let lastMessage = message.text;
+    if (lastMessage.length > 40) {
+        lastMessage = lastMessage.substring(0, 40) + "...";
+    }
+
+    try {
+        // 1. Actualizar el chat padre con el último mensaje y su timestamp
+        await admin.database().ref(`chats/${chatId}`).update({
+            last_message: lastMessage,
+            last_message_time: message.timestamp
+        });
+
+        // 2. Enviar notificaciones push a los miembros del chat
+        try {
+            // Obtener los miembros del chat
+            const chatSnap = await admin.database().ref(`chats/${chatId}/members`).once('value');
+            if (!chatSnap.exists()) {
+                return null; // No hay miembros registrados
+            }
+
+            const members = chatSnap.val(); // { uid: true, ... }
+            const memberIds = Object.keys(members);
+
+            // Para cada miembro (excepto el remitente), enviar notificación si lo tiene habilitado
+            const notificationPromises = memberIds
+                .filter(memberId => memberId !== senderId) // Excluir al remitente
+                .map(async (memberId) => {
+                    try {
+                        // Verificar si el usuario tiene push_notifications habilitado
+                        const userSettingsSnap = await admin.database()
+                            .ref(`users/${memberId}/settings/push_notifications`)
+                            .once('value');
+
+                        if (userSettingsSnap.val() !== true) {
+                            return; // Usuario no tiene notificaciones habilitadas
+                        }
+
+                        // Obtener todos los tokens FCM del usuario
+                        const fcmTokensSnap = await admin.database()
+                            .ref(`users/${memberId}/fcm_tokens`)
+                            .once('value');
+
+                        if (!fcmTokensSnap.exists()) {
+                            return; // Usuario no tiene tokens registrados
+                        }
+
+                        const fcmTokens = Object.keys(fcmTokensSnap.val());
+
+                        // Enviar notificación a cada token
+                        return Promise.all(
+                            fcmTokens.map((token) =>
+                                admin.messaging().send({
+                                    token: token,
+                                    notification: {
+                                        title: "Nuevo mensaje",
+                                        body: message.text.substring(0, 100) // Limitar a 100 caracteres para notificación
+                                    },
+                                    data: {
+                                        chatId: chatId,
+                                        messageId: event.params.messageId
+                                    }
+                                }).catch((error) => {
+                                    console.warn(`Error enviando notificación al token ${token}:`, error);
+                                    // Opcionalmente, eliminar tokens inválidos
+                                    if (error.code === 'messaging/invalid-registration-token') {
+                                        return admin.database()
+                                            .ref(`users/${memberId}/fcm_tokens/${token}`)
+                                            .remove();
+                                    }
+                                    return null;
+                                })
+                            )
+                        );
+                    } catch (memberError) {
+                        console.error(`Error procesando notificaciones para usuario ${memberId}:`, memberError);
+                        // No interrumpir el flujo principal si falla para un miembro
+                        return null;
+                    }
+                });
+
+            // Esperar a que todas las notificaciones se envíen (sin bloquear el resultado)
+            await Promise.all(notificationPromises).catch((error) => {
+                console.error("Error en el envío de notificaciones:", error);
+            });
+        } catch (notificationError) {
+            console.error(`Error en el sistema de notificaciones para chat ${chatId}:`, notificationError);
+            // No interrumpir la actualización del chat si falla el sistema de notificaciones
+        }
+        
+        return null;
+    } catch (error) {
+        console.error(`Error updating chat ${chatId}:`, error);
+        return null;
+    }
+});
+
+/*
+    TRIGGER: Al subir una imagen a Storage:
+      - Si pertenece a un post (ruta comienza con 'posts/'), analiza la imagen usando Vision API.
+      - Extrae los labels detectados, los traduce al idioma común ('en'),
+        y guarda las palabras clave en el campo 'vision_labels' del post en RTDB.
+    Esto mejora el matching de posts usando características visuales detectadas automáticamente.
+*/
+export const onImageUploaded = onObjectFinalized(async (event) => {
+    const filePath = event.data.name; // Ruta completa del archivo en Storage
+    const bucket = event.data.bucket; // Bucket del Storage
+
+    // 1. Verificar que la imagen pertenece a un post
+    if (!filePath.startsWith('posts/')) {
+        return null; // No es una imagen de post, ignorar
+    }
+
+    try {
+        // Extraer el postId de la ruta (ej: posts/{postId}/image.jpg)
+        const pathParts = filePath.split('/');
+        if (pathParts.length < 3) {
+            console.warn(`Ruta de imagen inválida: ${filePath}`);
             return null;
-        } catch (error) {
-            console.error("Error crítico purgado usuarios:", error);
+        }
+        const postId = pathParts[1];
+
+        // 2. Usar Cloud Vision para detectar labels en la imagen
+        const imageRequest = {
+            image: {
+                source: {
+                    gcsImageUri: `gs://${bucket}/${filePath}`
+                }
+            }
+        };
+
+        const visionResponse = await visionClient.labelDetection(imageRequest);
+        const labels = visionResponse[0]?.labelAnnotations || [];
+
+        if (labels.length === 0) {
+            console.log(`No se detectaron labels en la imagen ${filePath}`);
+            return null;
+        }
+
+        // 3. Extraer descripciones de los labels detectados
+        const labelDescriptions = labels
+            .map((label: any) => label.description)
+            .filter((desc: any) => desc && typeof desc === 'string');
+
+        if (labelDescriptions.length === 0) {
             return null;
         }
 });
