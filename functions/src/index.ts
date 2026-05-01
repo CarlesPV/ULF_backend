@@ -671,7 +671,7 @@ export const onImageUploaded = onObjectFinalized(async (event) => {
         if (labelDescriptions.length === 0) {
             return null;
         }
-
+        
         // 4. Traducir los labels al idioma común ('en')
         let translatedLabels: string[] = [];
         try {
