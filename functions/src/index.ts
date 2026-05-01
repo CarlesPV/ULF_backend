@@ -671,4 +671,40 @@ export const onImageUploaded = onObjectFinalized(async (event) => {
         if (labelDescriptions.length === 0) {
             return null;
         }
+        
+        // 4. Traducir los labels al idioma común ('en')
+        let translatedLabels: string[] = [];
+        try {
+            const translationText = labelDescriptions.join(', ');
+            const [translation] = await translateClient.translate(translationText, TARGET_LANGUAGE);
+            // Dividir por comas y limpiar espacios
+            translatedLabels = translation
+                .split(',')
+                .map((label: string) => label.trim().toLowerCase())
+                .filter((label: string) => label.length > 0);
+        } catch (translationError) {
+            console.error(`Error traduciendo labels para imagen ${filePath}:`, translationError);
+            // Fallback: usar los labels originales en minúsculas
+            translatedLabels = labelDescriptions
+                .map((label: string) => label.toLowerCase())
+                .filter((label: string) => label.length > 0);
+        }
+
+        // 5. Guardar los vision_labels en el nodo del post
+        try {
+            await admin.database()
+                .ref(`posts/${postId}/vision_labels`)
+                .set(translatedLabels);
+            console.log(`Vision labels guardados para post ${postId}: ${translatedLabels.join(', ')}`);
+        } catch (dbError) {
+            console.error(`Error guardando vision_labels en RTDB para post ${postId}:`, dbError);
+            // Continuar sin interrumpir aunque falle la escritura en RTDB
+        }
+
+        return null;
+    } catch (error) {
+        console.error(`Error procesando imagen de Storage (${filePath}):`, error);
+        // No interrumpir el flujo principal si falla el análisis de Vision
+        return null;
+    }
 });
