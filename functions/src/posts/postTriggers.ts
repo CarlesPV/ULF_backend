@@ -1,0 +1,68 @@
+import { onValueCreated, onValueUpdated, onValueDeleted } from "firebase-functions/v2/database";
+import { admin } from "../shared/firebase";
+import { TARGET_LANGUAGE, translateClient } from "../shared/translate";
+
+/*
+    TRIGGER: Al crear un post:
+      - Lo añade al índice /active_posts/{center_id}/{post_id} si está activo.
+      - Traduce su descripción a un idioma común para búsquedas multiidioma.
+    Ambas tareas son independientes: si la traducción falla, el post sigue indexado.
+*/
+export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any) => {
+    const snapshot = event.data;
+    const post = snapshot.val();
+    if (!post?.center_id) return null;
+
+    const tasks: Promise<any>[] = [];
+
+    if (post.status === "active" && post.is_deleted === false) {
+        tasks.push(
+            admin.database()
+                .ref(`active_posts/${post.center_id}/${event.params.postId}`)
+                .set(post.created_at)
+        );
+    }
+
+    if (post.description) {
+        tasks.push(
+            translateClient.translate(post.description, TARGET_LANGUAGE)
+                .then(([translation]: [string, any]) => snapshot.ref.update({
+                    translated_description: translation.toLowerCase()
+                }))
+                .catch((error: any) => {
+                    console.error(`Error traduciendo el post ${event.params.postId}:`, error);
+                })
+        );
+    }
+
+    await Promise.all(tasks);
+    return null;
+});
+
+/*
+    TRIGGER: Mantiene el índice /active_posts/{center_id}/{post_id} sincronizado.
+    Cuando un post cambia de estado (matched, returned) o se borra lógicamente,
+    se elimina del índice. Así getFilteredFeed solo escanea posts activos.
+*/
+export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any) => {
+    const after = event.data.after.val();
+    if (!after?.center_id) return null;
+
+    const indexRef = admin.database().ref(`active_posts/${after.center_id}/${event.params.postId}`);
+    const isActive = after.status === "active" && after.is_deleted === false;
+
+    return isActive ? indexRef.set(after.created_at) : indexRef.remove();
+});
+
+/*
+    TRIGGER: Limpia el índice /active_posts cuando un post se borra físicamente,
+    evitando entradas huérfanas que apunten a posts ya inexistentes.
+*/
+export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any) => {
+    const before = event.data.val();
+    if (!before?.center_id) return null;
+
+    return admin.database()
+        .ref(`active_posts/${before.center_id}/${event.params.postId}`)
+        .remove();
+});
