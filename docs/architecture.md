@@ -40,20 +40,34 @@ Se ha añadido la regla `.indexOn: ["is_active"]` al nodo `/centers` en `databas
 Los desarrolladores de la app móvil ya no deben usar `FirebaseAuth.instance.createUserWithEmailAndPassword`. Deben invocar la función de la siguiente manera:
 
 ```dart
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
-Future<void> registerUser(String email, String password, String name) async {
+Future<void> registerAndVerify(String email, String password, String name) async {
   final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('secureUniversityRegistration');
   
   try {
-    final result = await callable.call(<String, dynamic>{
+    // 1. El backend crea el usuario de forma segura
+    await callable.call(<String, dynamic>{
       'email': email,
       'password': password,
       'name': name,
     });
-    print("Registro exitoso. UID: ${result.data['uid']}");
+    
+    // 2. El frontend inicia sesión inmediatamente
+    UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+
+    // 3. El frontend dispara el correo de verificación nativo de Firebase
+    if (userCredential.user != null && !userCredential.user!.emailVerified) {
+      await userCredential.user!.sendEmailVerification();
+      print("Por favor, verifica tu bandeja de entrada.");
+    }
+    
   } on FirebaseFunctionsException catch (e) {
-    print("Error del servidor: ${e.message}"); // Ej: "Dominio no autorizado"
+    print("Error del servidor: ${e.message}"); 
   }
 }
 ```
