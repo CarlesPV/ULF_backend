@@ -2,73 +2,58 @@ import * as functions from "firebase-functions";
 import { admin } from "../shared/firebase";
 import { TARGET_LANGUAGE, translateClient } from "../shared/translate";
 
-/*
-    Función para verificar posibles coincidencias entre publicaciones de objetos perdidos y encontrados
-    VERSIÓN MEJORADA: Ahora busca coincidencias basadas en descripciones traducidas (multiidioma)
-*/
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const { center_id, category, type, color, description } = request.data;
 
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", "Debes verificar tu correo para buscar coincidencias.");
     }
-
     if (!center_id || !category || !type) {
         throw new functions.https.HttpsError("invalid-argument", "Faltan criterios de búsqueda.");
     }
 
     const targetType = (type === "found") ? "lost" : "found";
-    const postsRef = admin.database().ref("posts");
-    const snapshot = await postsRef.orderByChild("center_id").equalTo(center_id).once("value");
 
-    if (!snapshot.exists()) return { matches: [] };
+    // 1. Consultar solo IDs de posts activos usando el índice
+    const activeRefs = await admin.database().ref(`active_posts/${center_id}`).once("value");
+    if (!activeRefs.exists()) return { matches: [] };
 
-    const allPosts = snapshot.val();
-    const potentialMatches: any[] = [];
+    const activeIds = Object.keys(activeRefs.val());
 
-    // 1. Unir el color y la descripción de búsqueda
-    let searchTerms = "";
-    if (color) searchTerms += color + " ";
-    if (description) searchTerms += description;
+    // 2. Traer solo el contenido de esos posts concurrentemente
+    const postPromises = activeIds.map(id => admin.database().ref(`posts/${id}`).once("value"));
+    const postSnapshots = await Promise.all(postPromises);
 
-    // 2. Traducir los términos de búsqueda al idioma común
+    // 3. Preparar términos de búsqueda y traducción
+    let searchTerms = `${color || ""} ${description || ""}`.trim();
     let searchWords: string[] = [];
-    if (searchTerms.trim() !== "") {
+    
+    if (searchTerms !== "") {
         try {
-            const [translation] = await translateClient.translate(searchTerms.trim(), TARGET_LANGUAGE);
-            // Dividir en palabras y filtrar palabras muy cortas (conectores)
+            const [translation] = await translateClient.translate(searchTerms, TARGET_LANGUAGE);
             searchWords = translation.toLowerCase().split(/\s+/).filter(w => w.length > 3);
         } catch (error) {
-            console.error("Error en la traducción en tiempo real:", error);
-            // Fallback: usar los términos originales si falla la API
+            console.error("Error en traducción:", error);
             searchWords = searchTerms.toLowerCase().split(/\s+/).filter(w => w.length > 3);
         }
     }
 
-    // 3. Fase de refinamiento en memoria
-    for (const id in allPosts) {
-        const post = allPosts[id];
+    // 4. Filtrado y Scoring
+    const potentialMatches: any[] = [];
+    
+    for (const snap of postSnapshots) {
+        if (!snap.exists()) continue;
+        const post = snap.val();
 
-        if (
-            post.status === "active" &&
-            post.type === targetType &&
-            post.category === category &&
-            post.is_deleted === false
-        ) {
-            // Relevancia base
+        if (post.type === targetType && post.category === category && !post.is_deleted) {
             let score = 1.0;
-
-            // Evaluamos coincidencias contra la descripción ya traducida del post
             const targetDesc = post.translated_description || post.description?.toLowerCase() || "";
 
             if (searchWords.length > 0 && targetDesc) {
                 let matchCount = 0;
                 for (const word of searchWords) {
-                    if (targetDesc.includes(word)) {
-                        matchCount++;
-                    }
+                    if (targetDesc.includes(word)) matchCount++;
                 }
-                // Aumentamos el score de forma proporcional a las palabras que hicieron "match"
                 score += (matchCount * 0.5);
             }
 
@@ -81,7 +66,5 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         }
     }
 
-    return {
-        matches: potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5)
-    };
+    return { matches: potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5) };
 });
