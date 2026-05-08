@@ -36,6 +36,13 @@
             }
         },
 
+        "active_posts": {
+            ".read": "auth != null",
+            "$center_id": {
+                ".read": "auth != null"
+            }
+        },
+
         "post_views": {
             "$post_id": {
                 ".indexOn": ["timestamp"],
