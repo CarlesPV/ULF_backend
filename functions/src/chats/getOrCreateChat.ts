@@ -48,9 +48,10 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
 
     await newChatRef.set(chatData);
 
-    // 4. IMPORTANTE: Indexar el chat para el usuario (Paso 2 de esta guía)
-    await db.ref(`user_chats/${uid}/${newChatId}`).set(true);
-    await db.ref(`user_chats/${postOwnerId}/${newChatId}`).set(true);
+    // 4. IMPORTANTE: Indexar el chat para el usuario con TIMESTAMP para el tiempo real
+    const currentTimestamp = admin.database.ServerValue.TIMESTAMP;
+    await db.ref(`user_chats/${uid}/${newChatId}`).set(currentTimestamp);
+    await db.ref(`user_chats/${postOwnerId}/${newChatId}`).set(currentTimestamp);
 
     return { chatId: newChatId };
 });
