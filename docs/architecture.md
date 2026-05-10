@@ -1,9 +1,11 @@
-# Documentación Arquitectónica: Registro Seguro con Cloud Functions
+# Documentación Arquitectónica: Backend Serverless
 
 ## 1. Resumen del Cambio
 Para garantizar la integridad de la base de datos y evitar vulnerabilidades de escalada de privilegios, el flujo de registro de nuevos usuarios ha sido migrado de una arquitectura "Client-to-Auth" a una arquitectura **"Client-to-Serverless"**. 
 
 El cliente (App Flutter) ya no se comunica directamente con Firebase Authentication para crear cuentas. En su lugar, consume una **Callable Cloud Function** (`secureUniversityRegistration`) que actúa como barrera de seguridad, validando el dominio del correo y forzando la asignación de roles.
+
+Además del registro, el backend expone callables para posts, feed, matcher, chats y notificaciones. Las funciones RF13 (`updatePostStatus`) y RF19 (`recordPostView`) ya existen y están exportadas desde `functions/src/index.ts`.
 
 ## 2. Flujo de Registro Actualizado
 1. **Petición del Cliente:** La app envía las credenciales (`email`, `password`, `name`) a la Cloud Function.
@@ -19,7 +21,11 @@ Se ha introducido el ecosistema de Node.js/TypeScript al repositorio:
 ```
 / (raíz)
  ├── functions/                          # Entorno Backend Serverless
- │    ├── src/index.ts                   # Lógica principal de las Cloud Functions
+ │    ├── src/index.ts                   # Exporta las Cloud Functions públicas
+ │    ├── src/auth/                      # Registro seguro
+ │    ├── src/posts/                     # Reportes, estados, vistas y triggers
+ │    ├── src/matcher/                   # Búsqueda de coincidencias
+ │    ├── src/feed/                      # Feed filtrado por índice de activos
  │    ├── package.json                   # Dependencias (firebase-admin, firebase-functions)
  │    └── tsconfig.json                  # Reglas de compilación de TypeScript
  ├── .github/workflows/deploy.yml        # Pipeline CI/CD
@@ -30,11 +36,15 @@ Se ha introducido el ecosistema de Node.js/TypeScript al repositorio:
 ## 4. Componentes Críticos Modificados
 
 ### A. CI/CD Pipeline (`deploy.yml`)
-El flujo de GitHub Actions ahora ejecuta un paso de construcción (`npm run build`) dentro de la carpeta `/functions` antes de desplegar. El comando de despliegue se ha actualizado a:
+El flujo de GitHub Actions ejecuta un paso de construcción (`npm run build`) dentro de la carpeta `/functions` antes de desplegar. El comando de despliegue es:
 `firebase deploy --only database,functions`
+
+Actualmente no hay una suite de tests automatizados conectada al pipeline; esa es una mejora pendiente para la fase de calidad.
 
 ### B. Índices en Realtime Database
 Se ha añadido la regla `.indexOn: ["is_active"]` al nodo `/centers` en `database.rules.json` para optimizar el filtrado al registrar usuarios, evitando la descarga completa de la colección.
+
+El feed y el matcher usan el índice secundario `/active_posts/{center_id}` para leer solo publicaciones activas. Ese índice lo mantienen los triggers `onPostCreated`, `onPostUpdated` y `onPostDeleted`.
 
 ### C. Consumo desde Flutter (Guía para Frontend)
 Los desarrolladores de la app móvil ya no deben usar `FirebaseAuth.instance.createUserWithEmailAndPassword`. Deben invocar la función de la siguiente manera:
@@ -76,3 +86,9 @@ Future<void> registerAndVerify(String email, String password, String name) async
 Para que esta arquitectura funcione de forma estricta y segura, los administradores del proyecto deben asegurar dos configuraciones manuales en la consola web de Firebase:
 1. **Bloquear registro por defecto:** En *Authentication > Settings > User actions*, deshabilitar "Enable create (sign-up)". Esto evita que un atacante salte la Cloud Function usando la API pública de Firebase.
 2. **Backups:** En *Realtime Database > Backups*, habilitar las copias de seguridad diarias automatizadas (Requiere Plan Blaze). **AÚN SIN REALIZAR**.
+
+## 6. Pendientes Técnicos Auditados
+1. Añadir base de tests para `functions` y cubrir callables de bajo riesgo.
+2. Endurecer `recordPostView` y `updatePostStatus` con validación estricta de argumentos y existencia del post.
+3. Endurecer reglas de `/posts` con enums, tipos básicos y consistencia entre clave y payload.
+4. Actualizar CI para ejecutar tests antes de compilar y desplegar.

@@ -8,4 +8,5 @@ export { checkPotentialMatches } from "./matcher/checkPotentialMatches";
 export { purgeUnverifiedAccounts } from "./maintenance/purgeUnverifiedAccounts";
 export { saveFcmToken } from "./notifications/saveFcmToken";
 export { onMessageCreated } from "./chats/onMessageCreated";
+export { getOrCreateChat } from "./chats/getOrCreateChat";
 export { onImageUploaded } from "./storage/onImageUploaded";

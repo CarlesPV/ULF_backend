@@ -54,6 +54,13 @@
             }
         },
 
+        "user_chats": {
+            "$user_id": {
+                ".read": "auth != null && auth.uid === $user_id",
+                ".write": "false"
+            }
+        },
+
         "chats": {
             ".indexOn": ["center_id", "post_id"],
             "$chat_id": {
