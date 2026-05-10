@@ -5,12 +5,14 @@ El algoritmo Matcher es el motor de inferencia de ULF. Su objetivo (RF06) es bus
 
 Actualmente se encuentra en su **Fase 1 (In-Memory Scoring)** ejecutándose como una Callable Cloud Function.
 
+La implementación actual ya evita leer todos los posts del centro: primero consulta el índice secundario `/active_posts/{center_id}` y después recupera en paralelo solo los posts que siguen vigentes.
+
 ## 2. Flujo de Ejecución (Client-to-Serverless)
 
 1. El usuario en Flutter rellena el formulario de "He encontrado un objeto".
 2. Antes de guardar en Realtime Database, Flutter llama a la función `checkPotentialMatches`.
-3. El servidor extrae `center_id`, `category`, `type` y opcionalmente `color`.
-4. El servidor realiza un pre-filtro indexado en RTDB por `center_id` para no descargar toda la BD.
+3. El servidor extrae `center_id`, `category`, `type` y opcionalmente `color` y `description`.
+4. El servidor lee las claves de `/active_posts/{center_id}` para no descargar posts resueltos, devueltos o borrados lógicamente.
 5. Se ejecuta el motor de *Scoring* en memoria.
 6. Retorna al cliente un array con los 5 mejores resultados (ID, Título, Foto y Score).
 
@@ -19,7 +21,7 @@ Actualmente se encuentra en su **Fase 1 (In-Memory Scoring)** ejecutándose como
 El algoritmo asigna un valor de relevancia (`score`) basado en inferencias exactas y semánticas:
 
 * **Inferencia Base (+1.0):** El objeto tiene el estado `active`, pertenece al mismo `center_id`, el tipo es el opuesto (si busco 'found', filtro por 'lost') y la `category` coincide exactamente.
-* **Inferencia de Color (+0.5):** Si el frontend envía un parámetro de color, el algoritmo realiza una búsqueda `toLowerCase().includes()` dentro de la descripción del objeto perdido. Si hay un "hit", la confianza aumenta.
+* **Inferencia por palabras (+0.5 por coincidencia):** Si el frontend envía `color` o `description`, el algoritmo traduce esos términos al idioma común de búsqueda y compara palabras relevantes contra `translated_description` o `description`.
 
 ## 4. Estructura de la API (Cloud Function)
 
@@ -30,7 +32,8 @@ final result = await callable.call({
   'center_id': 'uab',
   'type': 'found',
   'category': 'keys',
-  'color': 'rojo' // Opcional
+  'color': 'rojo', // Opcional
+  'description': 'llavero con cinta' // Opcional
 });
 ```
 
@@ -48,3 +51,6 @@ final result = await callable.call({
   ]
 }
 ```
+
+## Estado de Calidad
+La optimización por `/active_posts` ya está implementada. Lo pendiente no es rehacer el matcher, sino añadir tests automatizados para los casos base: coincidencia exacta, coincidencia por palabra traducida y respuesta vacía cuando no hay candidatos.
