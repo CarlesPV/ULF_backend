@@ -112,22 +112,25 @@ function setupCallableTestEnv(options = {}) {
     }
   }));
 
+  jest.doMock("firebase-functions/v2/database", () => ({
+    onValueCreated: (_path, handler) => handler,
+    onValueUpdated: (_path, handler) => handler,
+    onValueDeleted: (_path, handler) => handler
+  }));
+
   jest.doMock(require.resolve("../../lib/shared/firebase"), () => ({ admin, db }));
 
-  let translate;
-  if (options.translateResult !== undefined || options.translateRejects) {
-    translate = jest.fn();
-    if (options.translateRejects) {
-      translate.mockRejectedValue(options.translateRejects);
-    } else {
-      translate.mockResolvedValue([options.translateResult]);
-    }
-
-    jest.doMock(require.resolve("../../lib/shared/translate"), () => ({
-      TARGET_LANGUAGE: "en",
-      translateClient: { translate }
-    }));
+  const translate = jest.fn();
+  if (options.translateRejects) {
+    translate.mockRejectedValue(options.translateRejects);
+  } else {
+    translate.mockResolvedValue([options.translateResult || ""]);
   }
+
+  jest.doMock(require.resolve("../../lib/shared/translate"), () => ({
+    TARGET_LANGUAGE: "en",
+    translateClient: { translate }
+  }));
 
   return {
     admin,

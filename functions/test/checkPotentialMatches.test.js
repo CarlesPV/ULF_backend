@@ -91,4 +91,146 @@ describe("checkPotentialMatches", () => {
 
     expect(result).toEqual({ matches: [] });
   });
+
+  test("returns a base score when only type and category match", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab": {
+          "lost-1": 100,
+          "lost-wallet": 101,
+          "found-1": 102
+        },
+        "posts/lost-1": {
+          id: "lost-1",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          title: "Llaves",
+          description: "Sin detalles",
+          photo_path: "posts/lost-1.jpg"
+        },
+        "posts/lost-wallet": {
+          id: "lost-wallet",
+          type: "lost",
+          category: "wallet",
+          is_deleted: false,
+          title: "Cartera",
+          description: "Negra",
+          photo_path: "posts/lost-wallet.jpg"
+        },
+        "posts/found-1": {
+          id: "found-1",
+          type: "found",
+          category: "keys",
+          is_deleted: false,
+          title: "Llaves encontradas",
+          description: "Azules",
+          photo_path: "posts/found-1.jpg"
+        }
+      }
+    });
+    const { checkPotentialMatches } = require("../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys"
+    }));
+
+    expect(result).toEqual({
+      matches: [
+        {
+          id: "lost-1",
+          title: "Llaves",
+          score: 1,
+          photo_path: "posts/lost-1.jpg"
+        }
+      ]
+    });
+    expect(env.translate).not.toHaveBeenCalled();
+  });
+
+  test("falls back to raw search terms when translation fails", async () => {
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab": {
+          "lost-1": 100
+        },
+        "posts/lost-1": {
+          id: "lost-1",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          title: "Llaves",
+          description: "Llavero rojo intenso",
+          photo_path: "posts/lost-1.jpg"
+        }
+      },
+      translateRejects: new Error("translate failed")
+    });
+    const { checkPotentialMatches } = require("../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      color: "rojo"
+    }));
+
+    expect(result).toEqual({
+      matches: [
+        {
+          id: "lost-1",
+          title: "Llaves",
+          score: 1.5,
+          photo_path: "posts/lost-1.jpg"
+        }
+      ]
+    });
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  test("orders matches by score and limits the response to five", async () => {
+    const activePosts = {};
+    const posts = {};
+
+    for (let index = 1; index <= 6; index++) {
+      const id = `lost-${index}`;
+      activePosts[id] = index;
+      posts[`posts/${id}`] = {
+        id,
+        type: "lost",
+        category: "keys",
+        is_deleted: false,
+        title: `Candidate ${index}`,
+        translated_description: index === 6 ? "alpha beta gamma" : "alpha",
+        photo_path: `posts/${id}.jpg`
+      };
+    }
+
+    setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab": activePosts,
+        ...posts
+      },
+      translateResult: "alpha beta gamma"
+    });
+    const { checkPotentialMatches } = require("../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      description: "alpha beta gamma"
+    }));
+
+    expect(result.matches).toHaveLength(5);
+    expect(result.matches[0]).toEqual({
+      id: "lost-6",
+      title: "Candidate 6",
+      score: 2.5,
+      photo_path: "posts/lost-6.jpg"
+    });
+  });
 });
