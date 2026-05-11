@@ -2,6 +2,7 @@
   "name": "ulf-functions",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && jest --runInBand",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "firebase-functions-test": "^3.1.0",
+    "jest": "^30.3.0",
     "typescript": "^4.9.0"
   },
   "private": true
