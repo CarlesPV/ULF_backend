@@ -11,8 +11,8 @@ service firebase.storage {
     match /posts/{fileName} {
       allow read: if isVerifiedUser();
       allow write: if isVerifiedUser() 
-                   && request.resource.size < 6 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png|webp)');
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/(jpeg|png)');
     }
     
     // Fotos de perfil
@@ -20,8 +20,8 @@ service firebase.storage {
       allow read: if isVerifiedUser();
       allow write: if isVerifiedUser() 
                    && request.auth.uid == userId
-                   && request.resource.size < 3 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png|webp)');
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/(jpeg|png)');
     }
   }
 }
