@@ -41,13 +41,13 @@
                     ".validate": "!data.exists() || newData.val() === data.val()"
                 },
                 "category": {
-                    ".validate": "newData.isString() && newData.val().matches('^(accessories|clothes|devices|wallets|keys|bags|study|others)$')"
+                    ".validate": "newData.isString() && newData.val().matches(/^(accessories|clothes|devices|wallets|keys|bags|study|others)$/)"
                 },
                 "type": {
-                    ".validate": "newData.isString() && newData.val().matches('^(lost|found)$')"
+                    ".validate": "newData.isString() && newData.val().matches(/^(lost|found)$/)"
                 },
                 "status": {
-                    ".validate": "newData.isString() && newData.val().matches('^(active|matched|returned)$')"
+                    ".validate": "newData.isString() && newData.val().matches(/^(active|matched|returned)$/)"
                 }
             }
         },
