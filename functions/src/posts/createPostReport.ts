@@ -19,8 +19,13 @@ export const createPostReport = functions.https.onCall(async (request) => {
     const { center_id, type, title, description, category, lat, lng, photo_path } = data;
 
     // 3. Validación de datos mínimos requeridos
+    const allowedCategories = ["accessories", "clothes", "devices", "wallets", "keys", "bags", "study", "others"];
     if (!center_id || !type || !category || !title || lat === undefined || lng === undefined) {
         throw new functions.https.HttpsError("invalid-argument", "Datos incompletos para el reporte.");
+    }
+
+    if (!allowedCategories.includes(category)) {
+        throw new functions.https.HttpsError("invalid-argument", "Categoría no permitida.");
     }
 
     // 4. Generar Geohash para futuras consultas espaciales
