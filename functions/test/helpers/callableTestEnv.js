@@ -79,6 +79,10 @@ function setupCallableTestEnv(options = {}) {
       })
     };
 
+    ref.orderByValue = jest.fn(() => ({
+      once: ref.once
+    }));
+
     ref.orderByChild = jest.fn((child) => ({
       equalTo: jest.fn((value) => ({
         once: jest.fn(async () => {

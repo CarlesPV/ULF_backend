@@ -11,8 +11,22 @@ env:
   FIREBASE_DATABASE_URL: https://unilost-and-found-b6bb3-default-rtdb.firebaseio.com
 
 jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: cd functions && npm install
+      - name: Run Tests
+        run: cd functions && npm test
+
   deploy-backend:
     runs-on: ubuntu-latest
+    needs: test-backend
     steps:
       - uses: actions/checkout@v6.0.2
       

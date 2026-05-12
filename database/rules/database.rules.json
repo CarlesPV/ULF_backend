@@ -54,7 +54,8 @@
         "active_posts": {
             ".read": "auth != null",
             "$center_id": {
-                ".read": "auth != null"
+                ".read": "auth != null",
+                ".indexOn": [".value"]
             }
         },
         "post_views": {
