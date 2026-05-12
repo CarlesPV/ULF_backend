@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - develop
 
 env:
   FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
