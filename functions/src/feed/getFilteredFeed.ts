@@ -24,6 +24,7 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     // 1. Leer solo las keys activas del índice secundario (no los posts completos aún)
     const activeKeysSnap = await admin.database()
         .ref(`active_posts/${center_id}`)
+        .orderByValue() // Ordenar por timestamp (valor en este índice)
         .once("value");
 
     if (!activeKeysSnap.exists()) return { feed: [] };
@@ -58,8 +59,15 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         if (category && post.category !== category) continue;
 
         if (searchWords.length > 0) {
-            const targetText = `${post.title || ""} ${post.translated_description || post.description || ""}`.toLowerCase();
-            const hasMatch = searchWords.some((word: string) => targetText.includes(word));
+            // Combinamos título, descripción (original y traducida) y etiquetas visuales para una búsqueda exhaustiva
+            const contentToSearch = [
+                post.title,
+                post.description,
+                post.translated_description,
+                ...(post.vision_labels || [])
+            ].filter(Boolean).join(" ").toLowerCase();
+
+            const hasMatch = searchWords.some((word: string) => contentToSearch.includes(word));
             if (!hasMatch) continue;
         }
 
