@@ -31,10 +31,10 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     if (searchTerms !== "") {
         try {
             const [translation] = await translateClient.translate(searchTerms, TARGET_LANGUAGE);
-            searchWords = translation.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+            searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
         } catch (error) {
             console.error("Error en traducción:", error);
-            searchWords = searchTerms.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+            searchWords = searchTerms.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
         }
     }
 

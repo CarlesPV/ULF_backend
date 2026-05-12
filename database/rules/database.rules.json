@@ -29,7 +29,7 @@
             ".indexOn": ["center_id", "type", "status", "category", "user_id", "created_at", "coords/geohash"],
             "$post_id": {
                 ".write": "auth != null && auth.token.email_verified === true && (!data.exists() || data.child('user_id').val() === auth.uid)",
-                ".validate": "newData.hasChildren(['id', 'user_id', 'center_id', 'type', 'title', 'category', 'status', 'created_at', 'updated_at', 'is_deleted'])",
+                ".validate": "newData.hasChildren(['id', 'user_id', 'center_id', 'type', 'title', 'category', 'status', 'created_at', 'updated_at', 'is_deleted']) && (['accessories', 'clothes', 'devices', 'wallets', 'keys', 'bags', 'study', 'others'].contains(newData.child('category').val()))",
                 "user_id": {
                     ".validate": "!data.exists() || newData.val() === data.val()"
                 }
