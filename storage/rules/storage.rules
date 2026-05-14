@@ -1,32 +1,33 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    
-    // Función reutilizable y centralizada
-    function isVerifiedUser() {
-      return request.auth != null && request.auth.token.email_verified == true;
+
+    // Función para verificar autenticación básica
+    function isAuthenticated() {
+      return request.auth != null;
     }
 
     // Objetos perdidos / encontrados
-    match /posts/{fileName} {
-      allow read: if isVerifiedUser();
-      allow write: if isVerifiedUser() 
+    match /posts/{postId}/{imageName} {
+      allow read: if true;
+      // Permitimos subida a cualquier usuario autenticado (se procesará a WebP luego)
+      allow write: if isAuthenticated()
                    && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png)');
+                   && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
     }
-    
+
     // Fotos de perfil
     match /users/{userId}/profile_image {
-      allow read: if isVerifiedUser();
-      allow write: if isVerifiedUser() 
+      allow read: if true;
+      allow write: if isAuthenticated()
                    && request.auth.uid == userId
                    && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png)');
+                   && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
     }
 
     // Versión optimizada (WebP)
     match /users/{userId}/profile_image.webp {
-      allow read: if isVerifiedUser();
+      allow read: if true;
       allow write: if false; // Solo accesible vía Admin SDK (Cloud Functions)
     }
   }

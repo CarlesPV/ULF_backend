@@ -87,8 +87,8 @@ Catálogo de objetos.
 | `category` | `string` | ENUM validado en Security Rules: `"accessories"`, `"clothes"`, `"devices"`, `"wallets"`, `"keys"`, `"bags"`, `"study"`, `"others"`. |
 | `status` | `string` | ENUM: `"active"`, `"matched"`, `"returned"`. |
 | `coords` | `object` | Objeto con `lat`, `lng` y `geohash` (para búsquedas por cercanía). |
-| `photo_path` | `string` | Ruta de Storage para la imagen (ej. `posts/{post_id}/image.jpg`). |
-| `photo_url` | `string` | URL pública de la imagen (opcional). |
+| `photo_path` | `string` | Ruta de Storage para la imagen original (ej. `posts/{post_id}/{image_id}`). |
+| `imageUrl` | `string` | URL pública de la imagen optimizada (WebP). |
 | `vision_labels` | `string[]` | Etiquetas generadas por AI (Vision API) para mejorar las búsquedas. |
 | `created_at` | `number` | Unix timestamp de creación. |
 | `updated_at` | `number` | Unix timestamp de modificación. |
@@ -108,7 +108,8 @@ Catálogo de objetos.
     "category": "keys",
     "status": "active",
     "coords": { "lat": 41.5, "lng": 2.1, "geohash": "sp3e..." },
-    "photo_path": "posts/post_xyz789/image.jpg",
+    "photo_path": "posts/post_xyz789/image-001.jpg",
+    "imageUrl": "https://storage.googleapis.com/.../image-001.jpg.webp",
     "vision_labels": ["key", "metal"],
     "created_at": 1705325000000,
     "updated_at": 1705325000000,
@@ -168,9 +169,12 @@ Salas de comunicación privada.
 | `id` | `string` | ID único del chat. |
 | `center_id` | `string` | Referencia al centro. |
 | `post_id` | `string` | Referencia a la publicación que originó el chat. |
-| `members` | `object` | Mapa de IDs de usuario con valor `true` (ej. `{"userA": true, "userB": true}`). Esta estructura facilita las consultas de lectura y la definición de Security Rules. |
-| `last_message` | `string` | Texto corto para mostrar en la previsualización de la lista de chats. |
-| `last_message_time` | `number` | Unix timestamp en milisegundos del último mensaje, usado para ordenar la bandeja de entrada. |
+| `postTitle` | `string` | Caché del título del post para visualización rápida. |
+| `postImageUrl` | `string` | Caché de la URL de la imagen del post (WebP). Puede ser `null` si no hay imagen. |
+| `members` | `object` | Mapa de IDs de usuario con valor `true` (ej. `{"userA": true, "userB": true}`). |
+| `usersInfo` | `object` | Desnormalización de datos de los participantes: `{ [uid]: { displayName: string, photoUrl: string|null } }`. |
+| `last_message` | `string` | Texto corto para mostrar en la previsualización o la constante `"SYSTEM_MSG_CHAT_STARTED"`. |
+| `last_message_time` | `number` | Unix timestamp en milisegundos del último mensaje. |
 | `created_at` | `number` | Unix timestamp en milisegundos de la creación de la sala. |
 
 ### Ejemplo JSON
@@ -180,11 +184,23 @@ Salas de comunicación privada.
     "id": "chat_def000",
     "center_id": "center_id_001",
     "post_id": "post_xyz789",
+    "postTitle": "Llaves de casa",
+    "postImageUrl": "https://storage.googleapis.com/...webp",
     "members": {
       "uid_abc123": true,
       "uid_viewer456": true
     },
-    "last_message": "Hola",
+    "usersInfo": {
+      "uid_abc123": {
+        "displayName": "Gabriel",
+        "photoUrl": "https://..."
+      },
+      "uid_viewer456": {
+        "displayName": "Carles",
+        "photoUrl": null
+      }
+    },
+    "last_message": "SYSTEM_MSG_CHAT_STARTED",
     "last_message_time": 1705335000000,
     "created_at": 1705331000000
   }

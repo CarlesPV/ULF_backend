@@ -1,19 +1,18 @@
-## Tareas Pendientes: Internacionalización y Documentación (Agente IA)
+## Mejoras en Chats y Corrección de Storage (Backend)
 
-### 1. Verificación y Completitud de Traducciones (Backend)
-**Objetivo:** Asegurar que todos los procesos de backend que interactúan con el usuario (notificaciones, correos, errores, o utilidades de traducción) soporten correctamente los 3 idiomas.
+### 1. Identificación Explícita del Publicador en los Chats [COMPLETADO]
+**Objetivo:** Proveer al frontend un mecanismo robusto para identificar inequívocamente al dueño del post asociado al chat, permitiendo extraer su nombre y foto de perfil independientemente de quién inicie la conversación.
+* **Archivo:** `functions/src/chats/getOrCreateChat.ts`
+* **Estado:** Finalizado. Se añadió `post_owner_id` y se mejoró la desnormalización de `usersInfo`.
+* **Instrucciones:**
+  1. En la construcción del objeto `chatData` (aproximadamente en la línea 36), añade un nuevo campo a nivel de raíz llamado `post_owner_id`.
+  2. Asigna a este campo el valor de la variable `postOwnerId` (ej. `post_owner_id: postOwnerId,`).
+  3. Asegúrate de que la sección `usersInfo` desnormalice correctamente los campos `displayName` y `photoUrl` tanto para el usuario que inicia (`uid`) como para el creador del post (`postOwnerId`), evitando valores indefinidos.
 
-**Instrucciones Atómicas:**
-1. **Auditoría de Utilidades de Traducción:** Revisar el archivo `functions/src/shared/translate.ts` para verificar la robustez de las integraciones de traducción automática o diccionarios estáticos.
-2. **Revisión de Notificaciones y Mensajes:** Analizar funciones de disparo (Triggers) como `postTriggers.ts`, `onMessageCreated.ts` y utilidades en `notifications/` para asegurar que los mensajes *push* enviados al frontend estén localizados o envíen las claves correctas (payload) para que el frontend los traduzca.
-3. **Validación de Respuestas de Error:** Comprobar que las Cloud Functions (ej. `secureUniversityRegistration.ts`, procesos del `matcher`, etc.) devuelvan códigos de error estandarizados en lugar de strings en un solo idioma, delegando la traducción final al frontend o resolviéndola según el idioma del usuario.
-4. **Pruebas Unitarias (i18n):** Implementar o actualizar los tests en `functions/test/` para validar que el sistema responde de forma segura y consistente cuando se simulan peticiones en los 3 idiomas manejados.
 
-### 2. Actualización Integral de la Documentación (Backend)
-**Objetivo:** Mantener sincronizada la documentación técnica (`docs/`) con el estado actual del código en producción y desarrollo.
-
-**Instrucciones Atómicas:**
-1. **Esquema de Base de Datos:** Leer el código de inicialización (`seed_db.ts`, `data/centers.json`) y las funciones de lectura/escritura para actualizar `docs/database.schema.md` con las colecciones y documentos exactos que existen hoy.
-2. **Reglas de Seguridad:** Analizar `database.rules.json` y el archivo `storage.rules`. Actualizar `docs/database.rules.md` y `docs/storage.rules.md` explicando de forma sencilla qué permite y qué restringe cada regla.
-3. **Mapa de Cloud Functions:** Revisar `functions/src/index.ts` y documentar en `docs/architecture.md` (o `implementation-status.md`) cada función exportada, su método de disparo (HTTP, Firestore trigger, etc.) y su propósito principal (ej. *matcher*, *feed*, *posts*, *chats*).
-4. **Instrucciones de Mantenimiento:** Actualizar el `README.md` con los comandos necesarios para desplegar las reglas, los índices, emular las funciones en local y ejecutar la suite de pruebas con Jest.
+### 2. Aseguramiento de Reglas de Storage frente a App Check
+**Objetivo:** Prevenir bloqueos 403 en subida de imágenes relacionados con reglas restrictivas y verificación de seguridad.
+* **Archivo:** `storage/rules/storage.rules`
+* **Instrucciones:**
+  1. Mantén la validación de seguridad de `request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream'`. La resolución estricta del Content-Type se hará en el Frontend, pero estas reglas aseguran que no se inyecten scripts.
+  2. Verifica el panel de Firebase App Check en la consola de Firebase. Si App Check está en modo "Enforcement" (Obligatorio) para Storage, debes documentar la necesidad de generar tokens de depuración (Debug Tokens) para los desarrolladores de Flutter o relajar temporalmente el `enforcement` en entornos locales.

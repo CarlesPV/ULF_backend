@@ -16,7 +16,7 @@ import * as fs from "fs";
 export const onImageUploaded = onObjectFinalized(async (event) => {
     const filePath = event.data.name; 
 
-    if (filePath.startsWith("posts/")) {
+    if (filePath.startsWith("posts/") && event.data.contentType !== "image/webp") {
         return handlePostImage(event);
     }
 
@@ -53,9 +53,8 @@ async function handleProfileImage(event: any) {
             }
         });
 
-        const file = bucket.file(destination);
-        await file.makePublic();
-        const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
+        // Generar URL manual formato Firebase Storage para evitar problemas de Auth/CORS
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media`;
 
         await admin.database().ref(`users/${userId}`).update({
             photoUrl: publicUrl
@@ -74,35 +73,75 @@ async function handleProfileImage(event: any) {
 async function handlePostImage(event: any) {
     const filePath = event.data.name;
     const bucketName = event.data.bucket;
+    const pathParts = filePath.split("/");
+
+    if (pathParts.length < 3) return null;
+    const postId = pathParts[1];
+    const fileName = pathParts[pathParts.length - 1];
+
+    const bucket = admin.storage().bucket(bucketName);
+    const tempFilePath = path.join(os.tmpdir(), `raw_${postId}_${Date.now()}`);
+    const optimizedFilePath = path.join(os.tmpdir(), `opt_${postId}_${Date.now()}.webp`);
 
     try {
-        const pathParts = filePath.split("/");
-        if (pathParts.length < 3) return null;
-        const postId = pathParts[1];
+        // 1. Descargar imagen original
+        await bucket.file(filePath).download({ destination: tempFilePath });
 
+        // 2. Optimización con Sharp (max 1080x1080, WebP)
+        await sharp(tempFilePath)
+            .resize(1080, 1080, { fit: "inside", withoutEnlargement: true })
+            .toFormat("webp")
+            .toFile(optimizedFilePath);
+
+        // 3. Subir optimizada
+        const destination = `posts/${postId}/${fileName}.webp`;
+        await bucket.upload(optimizedFilePath, {
+            destination,
+            metadata: {
+                contentType: "image/webp",
+                cacheControl: "public,max-age=31536000"
+            }
+        });
+
+        // Generar URL manual formato Firebase Storage para evitar problemas de Auth/CORS
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media`;
+
+        // 4. Vision API (usamos la optimizada para ahorrar ancho de banda/procesamiento si es posible, 
+        // o la local que ya tenemos)
         const imageRequest = {
-            image: { source: { gcsImageUri: `gs://${bucketName}/${filePath}` } }
+            image: { content: fs.readFileSync(optimizedFilePath) }
         };
 
         const visionResponse = await visionClient.labelDetection(imageRequest);
         const labels = visionResponse[0]?.labelAnnotations || [];
+        let translatedLabels: string[] = [];
 
-        if (labels.length === 0) return null;
+        if (labels.length > 0) {
+            const labelDescriptions = labels
+                .map((label: any) => label.description)
+                .filter((desc: any) => desc && typeof desc === "string");
+            
+            const translationText = labelDescriptions.join(", ");
+            translatedLabels = await translateLabels(translationText, DEFAULT_LANGUAGE);
+        }
 
-        const labelDescriptions = labels
-            .map((label: any) => label.description)
-            .filter((desc: any) => desc && typeof desc === "string");
+        // 5. Actualizar Realtime Database (Estandarizado a postImageUrl según roadmap)
+        await admin.database().ref(`posts/${postId}`).update({
+            postImageUrl: publicUrl,
+            imageUrl: publicUrl, // Mantener para compatibilidad temporal
+            vision_labels: translatedLabels
+        });
 
-        const translationText = labelDescriptions.join(", ");
-        const translatedLabels = await translateLabels(translationText, DEFAULT_LANGUAGE);
+        // 6. Eliminar original
+        await bucket.file(filePath).delete();
+        console.log(`Imagen de post optimizada y analizada para ${postId}: ${publicUrl}`);
 
-        await admin.database()
-            .ref(`posts/${postId}/vision_labels`)
-            .set(translatedLabels);
-
-        return null;
     } catch (error) {
         console.error(`Error procesando imagen de post (${filePath}):`, error);
-        return null;
+    } finally {
+        // Limpieza de archivos temporales
+        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+        if (fs.existsSync(optimizedFilePath)) fs.unlinkSync(optimizedFilePath);
     }
+    return null;
 }

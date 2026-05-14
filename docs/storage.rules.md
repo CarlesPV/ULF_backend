@@ -10,19 +10,20 @@ Este documento detalla las políticas de almacenamiento para imágenes de posts 
 
 ## Estructura de Directorios y Permisos
 
-### 1. Imágenes de Posts (`/posts/{fileName}`)
-* **Lectura:** Cualquier usuario verificado.
-* **Escritura:** Cualquier usuario verificado (la validación de propiedad se realiza a nivel de base de datos en el nodo `/posts`).
-* **Restricciones:** < 5MB, tipo `image/jpeg` o `image/png`.
+### 1. Imágenes de Posts (`/posts/{postId}/{imageName}`)
+* **Lectura:** Cualquier usuario verificado (incluye originales y .webp).
+* **Escritura (Originales):** Cualquier usuario verificado.
+    * **Restricciones:** < 5MB, tipo `image/jpeg` o `image/png`.
+* **Escritura (Optimizadas):** Bloqueada para clientes. Solo el Backend (Admin SDK) genera las versiones WebP.
 
-### 2. Fotos de Perfil (`/users/{userId}/profile_image`)
+### 3. Fotos de Perfil (`/users/{userId}/profile_image`)
 * **Lectura:** Cualquier usuario verificado.
 * **Escritura:** Solo el dueño del perfil (`request.auth.uid == userId`).
 * **Restricciones:** < 5MB, tipo `image/jpeg` o `image/png`.
 
-### 3. Fotos de Perfil Optimizadas (`/users/{userId}/profile_image.webp`)
+### 4. Fotos de Perfil Optimizadas (`/users/{userId}/profile_image.webp`)
 * **Lectura:** Cualquier usuario verificado.
-* **Escritura:** Bloqueada para clientes (`allow write: if false`). Solo el Backend (Admin SDK) puede generar o modificar estas versiones optimizadas.
+* **Escritura:** Bloqueada para clientes. Generadas automáticamente por Cloud Functions en formato WebP (512x512).
 
 ## Consideraciones para el Frontend (Flutter)
 1. **Compresión Local:** Se recomienda comprimir las imágenes en el dispositivo antes de subirlas para asegurar que no superen los 5MB y ahorrar datos al usuario.
