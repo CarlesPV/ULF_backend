@@ -33,12 +33,16 @@ describe("getOrCreateChat callable", () => {
 
         expect(result.chatId).toBeDefined();
         
-        // Verificar que se guardó el chat con la imagen y título del POST
+        // Verificar que se guardó el chat con la imagen y título del POST desnormalizado
         const chatWrite = env.writes.find(w => w.path.startsWith("chats/"));
         expect(chatWrite.value).toEqual(expect.objectContaining({
-            post_title: "Llaves perdidas",
-            post_image_url: "https://storage.com/post-1.jpg",
+            postTitle: "Llaves perdidas",
+            postImageUrl: "https://storage.com/post-1.jpg",
             post_id: "post-1",
+            usersInfo: expect.objectContaining({
+                "user-buyer": expect.any(Object),
+                "user-owner": expect.any(Object)
+            }),
             last_message: "SYSTEM_MSG_CHAT_STARTED"
         }));
     });
