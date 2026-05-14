@@ -1,15 +1,16 @@
 import * as functions from "firebase-functions";
 import { admin } from "../shared/firebase";
-import { TARGET_LANGUAGE, translateClient } from "../shared/translate";
+import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
+import { I18N_STRINGS } from "../shared/i18n";
 
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const { center_id, category, type, color, description } = request.data;
 
     if (!request.auth || !request.auth.token.email_verified) {
-        throw new functions.https.HttpsError("permission-denied", "Debes verificar tu correo para buscar coincidencias.");
+        throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
     }
     if (!center_id || !category || !type) {
-        throw new functions.https.HttpsError("invalid-argument", "Faltan criterios de búsqueda.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
     const targetType = (type === "found") ? "lost" : "found";
@@ -29,13 +30,13 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     let searchWords: string[] = [];
     
     if (searchTerms !== "") {
+        let translation = searchTerms;
         try {
-            const [translation] = await translateClient.translate(searchTerms, TARGET_LANGUAGE);
-            searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
+            translation = await translateText(searchTerms, DEFAULT_LANGUAGE);
         } catch (error) {
             console.error("Error en traducción:", error);
-            searchWords = searchTerms.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
         }
+        searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
     }
 
     // 4. Filtrado y Scoring

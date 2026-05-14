@@ -1,52 +1,30 @@
-# UniLost & Found (ULF) - Storage Rules (v2)
+# Reglas de Seguridad - Firebase Storage (ULF)
 
-Documentación de las reglas de seguridad de Firebase Storage actualizadas para la Iteración 3. El archivo de reglas se encuentra en `storage/rules/storage.rules`.
+Este documento detalla las políticas de almacenamiento para imágenes de posts y perfiles de usuario.
 
-## Conceptos clave de Seguridad y Optimización
+## Conceptos Clave
+- **Restricción de Tamaño:** Límite global de **5MB** por archivo.
+- **Formatos Permitidos:** El cliente puede subir imágenes en formato **JPEG y PNG**.
+- **Optimización WebP:** El sistema (vía Cloud Functions o extensiones) convierte las imágenes a **WebP** para optimizar la carga en el dispositivo móvil.
+- **Verificación Obligatoria:** Solo usuarios con correo institucional verificado pueden leer o escribir en el storage.
 
-- **Restricción de Tamaño:** Límite global de **5MB** por archivo para optimizar el almacenamiento y ancho de banda.
-- **Formatos Permitidos:** Solo se permiten subidas desde el cliente en formato **JPEG y PNG**.
-- **Optimización Automática (WebP):** Se utiliza la extensión de Firebase **"Resize Images"** para procesar todas las subidas.
-    - Las imágenes se redimensionan a un máximo de **1080x1080**.
-    - Se convierten automáticamente a formato **WebP** para máxima eficiencia.
-    - El archivo original (JPG/PNG) se elimina automáticamente tras la conversión.
-- **Aislamiento por Directorios:** Los archivos se dividen en `/posts` y `/profiles`.
+## Estructura de Directorios y Permisos
 
-## Código de Reglas
+### 1. Imágenes de Posts (`/posts/{fileName}`)
+* **Lectura:** Cualquier usuario verificado.
+* **Escritura:** Cualquier usuario verificado (la validación de propiedad se realiza a nivel de base de datos en el nodo `/posts`).
+* **Restricciones:** < 5MB, tipo `image/jpeg` o `image/png`.
 
-```javascript
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    
-    function isVerifiedUser() {
-      return request.auth != null && request.auth.token.email_verified == true;
-    }
+### 2. Fotos de Perfil (`/users/{userId}/profile_image`)
+* **Lectura:** Cualquier usuario verificado.
+* **Escritura:** Solo el dueño del perfil (`request.auth.uid == userId`).
+* **Restricciones:** < 5MB, tipo `image/jpeg` o `image/png`.
 
-    // Objetos perdidos / encontrados
-    match /posts/{fileName} {
-      allow read: if isVerifiedUser();
-      allow write: if isVerifiedUser() 
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png)');
-    }
-    
-    // Fotos de perfil
-    match /profiles/{userId} {
-      allow read: if isVerifiedUser();
-      allow write: if isVerifiedUser() 
-                   && request.auth.uid == userId
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png)');
-    }
-  }
-}
-```
+### 3. Fotos de Perfil Optimizadas (`/users/{userId}/profile_image.webp`)
+* **Lectura:** Cualquier usuario verificado.
+* **Escritura:** Bloqueada para clientes (`allow write: if false`). Solo el Backend (Admin SDK) puede generar o modificar estas versiones optimizadas.
 
 ## Consideraciones para el Frontend (Flutter)
-
-1. **Formatos de subida**: La app debe asegurar que las imágenes capturadas o seleccionadas se envíen como `image/jpeg` o `image/png`. Si se intenta subir un `webp` u otro formato directamente, Storage devolverá un error `403`.
-
-2. **Consumo de imágenes**: Tras la subida, el backend (vía extensión) reemplazará el archivo por su versión `.webp`. El cliente debe estar preparado para manejar esta transición o solicitar directamente la versión optimizada.
-
-3. **Límite de 5MB**: Si el payload supera el límite de 5MB, Storage rechazará la petición. Se recomienda compresión local previa en el dispositivo.
+1. **Compresión Local:** Se recomienda comprimir las imágenes en el dispositivo antes de subirlas para asegurar que no superen los 5MB y ahorrar datos al usuario.
+2. **Formatos:** La cámara de Flutter suele generar JPEGs; asegúrese de que el `Content-Type` de la cabecera de subida sea correcto.
+3. **Caché:** Las imágenes optimizadas en WebP ofrecen un rendimiento superior en la lista de feeds.

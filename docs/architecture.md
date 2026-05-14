@@ -87,8 +87,37 @@ Para que esta arquitectura funcione de forma estricta y segura, los administrado
 1. **Bloquear registro por defecto:** En *Authentication > Settings > User actions*, deshabilitar "Enable create (sign-up)". Esto evita que un atacante salte la Cloud Function usando la API pública de Firebase.
 2. **Backups:** En *Realtime Database > Backups*, habilitar las copias de seguridad diarias automatizadas (Requiere Plan Blaze). **AÚN SIN REALIZAR**.
 
-## 6. Pendientes Técnicos Auditados
-1. Añadir base de tests para `functions` y cubrir callables de bajo riesgo.
-2. Endurecer `recordPostView` y `updatePostStatus` con validación estricta de argumentos y existencia del post.
-3. Endurecer reglas de `/posts` con enums, tipos básicos y consistencia entre clave y payload.
-4. Actualizar CI para ejecutar tests antes de compilar y desplegar.
+## 6. Catálogo de Cloud Functions
+
+El sistema utiliza Firebase Cloud Functions (Node.js/TypeScript) para procesar lógica de negocio de forma segura.
+
+### 6.1 Funciones Callables (Invocables desde el cliente)
+| Función | Propósito | Payload Requerido |
+| :--- | :--- | :--- |
+| `secureUniversityRegistration` | Registro seguro de usuarios con validación de dominio. | `email`, `password`, `name`, `language` (opcional). |
+| `createPostReport` | Crea una nueva publicación de objeto perdido/encontrado. | `center_id`, `type`, `title`, `description`, `category`, `lat`, `lng`, `photo_path`. |
+| `updatePostStatus` | Cambia el estado de un post (`matched`, `returned`). | `post_id`, `new_status`. |
+| `recordPostView` | Registra que un usuario ha visualizado un post. | `post_id`. |
+| `getFilteredFeed` | Recupera el feed de posts activos filtrado. | `center_id`, `type`, `search_term` (opcional). |
+| `checkPotentialMatches` | Busca coincidencias inteligentes para un objeto. | `center_id`, `type`, `category`, `color`, `description`. |
+| `saveFcmToken` | Registra el token de notificaciones push del usuario. | `token`. |
+| `getOrCreateChat` | Inicia o recupera una conversación privada. | `post_id`, `owner_id`. |
+
+### 6.2 Triggers (Eventos de base de datos / storage)
+| Trigger | Evento | Acción |
+| :--- | :--- | :--- |
+| `onPostCreated` | `posts/{id}` (Creación) | Indexa en `/active_posts` y traduce la descripción al idioma común. |
+| `onPostUpdated` | `posts/{id}` (Escritura) | Sincroniza el índice de activos según el `status` y `is_deleted`. |
+| `onPostDeleted` | `posts/{id}` (Borrado) | Elimina la referencia del índice de activos. |
+| `onMessageCreated` | `messages/{chatId}/{id}` | Envía notificación push localizada al destinatario del mensaje. |
+| `onImageUploaded` | Cloud Storage (Upload) | Si es perfil: optimiza a WebP. Si es post: detecta etiquetas con Vision AI. |
+
+### 6.3 Tareas Programadas (Cron)
+| Función | Frecuencia | Acción |
+| :--- | :--- | :--- |
+| `purgeUnverifiedAccounts` | Diario (02:00 AM) | Elimina cuentas registradas hace >48h que no han verificado su correo. |
+
+## 7. Próximos Pasos Técnicos
+1. Mantener la suite de tests sincronizada con los cambios de contrato.
+2. Implementar logs de auditoría en BigQuery para analíticas de objetos encontrados vs. devueltos.
+3. Refinar los umbrales de coincidencia en el Matcher basado en feedback real.

@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import { admin } from "../shared/firebase";
+import { I18N_STRINGS } from "../shared/i18n";
 
 /*
     Cloud Function Callable para guardar el token FCM del usuario.
@@ -10,7 +11,7 @@ export const saveFcmToken = functions.https.onCall(async (request) => {
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError(
             "permission-denied",
-            "Debes estar autenticado y verificar tu correo para recibir notificaciones."
+            I18N_STRINGS.errors.unverified_email
         );
     }
 
@@ -18,7 +19,7 @@ export const saveFcmToken = functions.https.onCall(async (request) => {
     if (!token || typeof token !== "string") {
         throw new functions.https.HttpsError(
             "invalid-argument",
-            "Token FCM inválido o no proporcionado."
+            I18N_STRINGS.errors.invalid_argument
         );
     }
 
@@ -32,7 +33,7 @@ export const saveFcmToken = functions.https.onCall(async (request) => {
         console.error(`Error guardando FCM token para usuario ${uid}:`, error);
         throw new functions.https.HttpsError(
             "internal",
-            "Error al registrar el token de notificaciones."
+            I18N_STRINGS.errors.internal_error
         );
     }
 });

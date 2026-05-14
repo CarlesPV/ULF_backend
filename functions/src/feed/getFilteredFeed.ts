@@ -1,8 +1,9 @@
 import * as functions from "firebase-functions";
 import * as geofire from "geofire-common";
 import { admin } from "../shared/firebase";
-import { TARGET_LANGUAGE, translateClient } from "../shared/translate";
+import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { FeedFilterPayload } from "../shared/types";
+import { I18N_STRINGS } from "../shared/i18n";
 
 /*
     Función para obtener el feed filtrado por universidad, tipo, categoría y palabras clave.
@@ -11,14 +12,14 @@ import { FeedFilterPayload } from "../shared/types";
 */
 export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     if (!request.auth || !request.auth.token.email_verified) {
-        throw new functions.https.HttpsError("permission-denied", "Debes verificar tu correo para ver el feed.");
+        throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
     }
 
     const data = request.data as FeedFilterPayload;
     const { center_id, type, category, search_term, max_results = 50, user_lat, user_lng, sort_by } = data;
 
     if (!center_id || !type) {
-        throw new functions.https.HttpsError("invalid-argument", "center_id y type son obligatorios.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
     // 1. Leer solo las keys activas del índice secundario (no los posts completos aún)
@@ -39,13 +40,13 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     // 3. Preparar palabras clave traducidas al idioma común para match multiidioma
     let searchWords: string[] = [];
     if (search_term?.trim()) {
+        let translation = search_term.trim();
         try {
-            const [translation] = await translateClient.translate(search_term.trim(), TARGET_LANGUAGE);
-            searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+            translation = await translateText(search_term.trim(), DEFAULT_LANGUAGE);
         } catch (error) {
             console.error("Error traduciendo término de búsqueda:", error);
-            searchWords = search_term.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
         }
+        searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
     }
 
     // 4. Filtrado en memoria del servidor

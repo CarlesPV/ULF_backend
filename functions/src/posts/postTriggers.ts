@@ -1,6 +1,6 @@
 import { onValueCreated, onValueUpdated, onValueDeleted } from "firebase-functions/v2/database";
 import { admin } from "../shared/firebase";
-import { TARGET_LANGUAGE, translateClient } from "../shared/translate";
+import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 
 /*
     TRIGGER: Al crear un post:
@@ -25,8 +25,8 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
 
     if (post.description) {
         tasks.push(
-            translateClient.translate(post.description, TARGET_LANGUAGE)
-                .then(([translation]: [string, any]) => snapshot.ref.update({
+            translateText(post.description, DEFAULT_LANGUAGE)
+                .then((translation: string) => snapshot.ref.update({
                     translated_description: translation.toLowerCase()
                 }))
                 .catch((error: any) => {

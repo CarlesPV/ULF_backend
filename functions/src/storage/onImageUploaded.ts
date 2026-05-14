@@ -1,6 +1,6 @@
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { admin } from "../shared/firebase";
-import { TARGET_LANGUAGE, translateClient } from "../shared/translate";
+import { DEFAULT_LANGUAGE, translateLabels } from "../shared/translate";
 import { visionClient } from "../shared/vision";
 import * as sharp from "sharp";
 import * as path from "path";
@@ -93,17 +93,8 @@ async function handlePostImage(event: any) {
             .map((label: any) => label.description)
             .filter((desc: any) => desc && typeof desc === "string");
 
-        let translatedLabels: string[] = [];
-        try {
-            const translationText = labelDescriptions.join(", ");
-            const [translation] = await translateClient.translate(translationText, TARGET_LANGUAGE);
-            translatedLabels = translation
-                .split(",")
-                .map((label: string) => label.trim().toLowerCase())
-                .filter((label: string) => label.length > 0);
-        } catch (translationError) {
-            translatedLabels = labelDescriptions.map((label: string) => label.toLowerCase());
-        }
+        const translationText = labelDescriptions.join(", ");
+        const translatedLabels = await translateLabels(translationText, DEFAULT_LANGUAGE);
 
         await admin.database()
             .ref(`posts/${postId}/vision_labels`)

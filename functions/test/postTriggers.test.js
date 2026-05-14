@@ -51,7 +51,7 @@ describe("post triggers", () => {
         value: 123
       }
     ]);
-    expect(env.translate).toHaveBeenCalledWith("Llaves azules", "en");
+    expect(env.translateText).toHaveBeenCalledWith("Llaves azules", "es");
     expect(update).toHaveBeenCalledWith({
       translated_description: "blue keys"
     });
@@ -69,7 +69,7 @@ describe("post triggers", () => {
     }));
 
     expect(env.writes).toEqual([]);
-    expect(env.translate).not.toHaveBeenCalled();
+    expect(env.translateText).not.toHaveBeenCalled();
   });
 
   test("onPostCreated keeps indexing when translation fails", async () => {

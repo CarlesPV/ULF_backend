@@ -1,5 +1,7 @@
 import { onValueCreated } from "firebase-functions/v2/database";
 import { admin } from "../shared/firebase";
+import { getNotificationString } from "../shared/i18n";
+import { SupportedLanguage } from "../shared/types";
 
 /*
     TRIGGER: Al crear un mensaje:
@@ -59,14 +61,18 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                 .filter(memberId => memberId !== senderId) // Excluir al remitente
                 .map(async (memberId) => {
                     try {
-                        // Verificar si el usuario tiene push_notifications habilitado
+                        // Verificar si el usuario tiene push_notifications habilitado y su idioma
                         const userSettingsSnap = await admin.database()
-                            .ref(`users/${memberId}/settings/push_notifications`)
+                            .ref(`users/${memberId}/settings`)
                             .once("value");
+                        const settings = userSettingsSnap.val() || {};
 
-                        if (userSettingsSnap.val() !== true) {
+                        if (settings.push_notifications !== true) {
                             return; // Usuario no tiene notificaciones habilitadas
                         }
+
+                        const userLang: SupportedLanguage = settings.language || "en";
+                        const notificationTitle = getNotificationString("new_message_title", userLang);
 
                         // Obtener todos los tokens FCM del usuario
                         const fcmTokensSnap = await admin.database()
@@ -85,7 +91,7 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                                 admin.messaging().send({
                                     token: token,
                                     notification: {
-                                        title: "Nuevo mensaje",
+                                        title: notificationTitle,
                                         body: message.text.substring(0, 100) // Limitar a 100 caracteres para notificación
                                     },
                                     data: {

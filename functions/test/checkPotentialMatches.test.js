@@ -73,7 +73,7 @@ describe("checkPotentialMatches", () => {
     });
     expect(env.refMock).toHaveBeenCalledWith("active_posts/uab");
     expect(env.refMock).toHaveBeenCalledWith("posts/lost-1");
-    expect(env.translate).toHaveBeenCalledWith("azul cinta", "en");
+    expect(env.translateText).toHaveBeenCalledWith("azul cinta", "es");
   });
 
   test("returns an empty list when the active index has no entries", async () => {
@@ -151,7 +151,7 @@ describe("checkPotentialMatches", () => {
         }
       ]
     });
-    expect(env.translate).not.toHaveBeenCalled();
+    expect(env.translateText).not.toHaveBeenCalled();
   });
 
   test("falls back to raw search terms when translation fails", async () => {

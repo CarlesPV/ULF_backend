@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import { admin, db } from "../shared/firebase";
+import { I18N_STRINGS } from "../shared/i18n";
 
 /*
     Función segura para el registro de usuarios en universidades
@@ -8,13 +9,13 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
     const { email, password, name } = request.data;
 
     if (!email || !password || !name) {
-        throw new functions.https.HttpsError("invalid-argument", "Datos incompletos.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
     // 1. Validar dominio
     const domain = email.split("@")[1];
     if (!domain) {
-        throw new functions.https.HttpsError("invalid-argument", "Email inválido.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
     }
     const formattedDomain = domain.replace(/\./g, "_");
 
@@ -23,14 +24,14 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
     const snapshot = await centersRef.orderByChild(`email_domains/${formattedDomain}`).equalTo(true).once("value");
 
     if (!snapshot.exists()) {
-        throw new functions.https.HttpsError("permission-denied", "Dominio no autorizado.");
+        throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.domain_not_authorized);
     }
 
     const centersData = snapshot.val();
     const centerId = Object.keys(centersData)[0];
 
     if (centersData[centerId].is_active !== true) {
-        throw new functions.https.HttpsError("unavailable", "El centro está inactivo.");
+        throw new functions.https.HttpsError("unavailable", I18N_STRINGS.errors.center_inactive);
     }
 
     let uid: string | null = null;
@@ -54,6 +55,7 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
             name: name,
             photo_path: "",
             settings: {
+                language: request.data.language || "es", // Default to ES if not provided
                 push_notifications: true,
                 dark_mode: false
             },
@@ -81,9 +83,9 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
 
         // Determinar si el error fue por email duplicado o fallo de servidor
         if (error.code === "auth/email-already-exists") {
-            throw new functions.https.HttpsError("already-exists", "El correo ya está registrado.");
+            throw new functions.https.HttpsError("already-exists", I18N_STRINGS.errors.email_already_exists);
         }
 
-        throw new functions.https.HttpsError("internal", "Error de sistema al crear la cuenta. Intente nuevamente.");
+        throw new functions.https.HttpsError("internal", I18N_STRINGS.errors.internal_error);
     }
 });
