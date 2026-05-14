@@ -1,9 +1,17 @@
-## Corrección de Errores Críticos (Desincronización de Datos)
+## Corrección Definitiva: Permisos de Storage y URLs de Imágenes
 
-### 1. Estandarización de Claves (Keys) en la Creación de Chats
-**Objetivo:** Asegurar que los datos que se envían a la base de datos usen la misma nomenclatura (snake_case o camelCase) que espera leer el Frontend para evitar datos nulos.
-* **Archivo principal a modificar:** `functions/src/chats/getOrCreateChat.ts`.
+### 1. Relajar Reglas de Firebase Storage (Error 403 y Lectura de Imágenes)
+**Objetivo:** Permitir que Flutter suba archivos sin rechazos por el MIME Type y que las imágenes se puedan leer sin enviar tokens Auth desde la red (requerido para `CachedNetworkImage`).
+* **Archivo principal:** `storage/rules/storage.rules`.
 * **Instrucciones:**
-  1. En el objeto `chatData`, cambiar la clave `postTitle` por `post_title` para que coincida con el modelo en Flutter.
-  2. Verificar que `postImageUrl` intente leer todas las posibles variantes del modelo de post (ej: `post?.imageUrl || post?.image_url || post?.photoUrl || null`).
-  3. Mantener el uso estricto de `"SYSTEM_MSG_CHAT_STARTED"`.
+  1. En las reglas de escritura (`allow write`) para `/posts/{postId}/{imageName}` y `/users/...`, relajar el filtro del tipo de contenido: `request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream'`.
+  2. Modificar el permiso de lectura a público. Cambiar `allow read: if isAuthenticated();` por `allow read: if true;` para TODAS las imágenes (perfiles y posts). Esto es crítico para que las URLs manuales del backend se rendericen en el frontend.
+
+### 2. Generar la URL Correcta de Firebase Storage
+**Objetivo:** Evitar guardar URLs de `storage.googleapis.com` (privadas) y guardar las URLs compatibles con Firebase (`firebasestorage.googleapis.com`).
+* **Archivos principales:** `functions/src/storage/onImageUploaded.ts` (y cualquier función que procese/guarde la imagen de perfil webp).
+* **Instrucciones:**
+  1. Al guardar la URL de la imagen procesada en Firestore, NO usar la URL pública del bucket directo de GCS.
+  2. Generar la URL manualmente usando este formato exacto:
+     `const downloadUrl = \`https://firebasestorage.googleapis.com/v0/b/\${bucket.name}/o/\${encodeURIComponent(filePath)}?alt=media\`;`
+  3. Guardar este `downloadUrl` en `photoUrl` y `postImageUrl`.

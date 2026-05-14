@@ -53,9 +53,8 @@ async function handleProfileImage(event: any) {
             }
         });
 
-        const file = bucket.file(destination);
-        await file.makePublic();
-        const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
+        // Generar URL manual formato Firebase Storage para evitar problemas de Auth/CORS
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media`;
 
         await admin.database().ref(`users/${userId}`).update({
             photoUrl: publicUrl
@@ -104,9 +103,8 @@ async function handlePostImage(event: any) {
             }
         });
 
-        const file = bucket.file(destination);
-        await file.makePublic();
-        const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
+        // Generar URL manual formato Firebase Storage para evitar problemas de Auth/CORS
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media`;
 
         // 4. Vision API (usamos la optimizada para ahorrar ancho de banda/procesamiento si es posible, 
         // o la local que ya tenemos)
@@ -127,9 +125,10 @@ async function handlePostImage(event: any) {
             translatedLabels = await translateLabels(translationText, DEFAULT_LANGUAGE);
         }
 
-        // 5. Actualizar Realtime Database
+        // 5. Actualizar Realtime Database (Estandarizado a postImageUrl según roadmap)
         await admin.database().ref(`posts/${postId}`).update({
-            imageUrl: publicUrl,
+            postImageUrl: publicUrl,
+            imageUrl: publicUrl, // Mantener para compatibilidad temporal
             vision_labels: translatedLabels
         });
 
