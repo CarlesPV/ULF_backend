@@ -1,19 +1,26 @@
-## Tareas Pendientes: Internacionalización y Documentación (Agente IA)
+## Tareas Pendientes (Ejecución para Agente IA)
 
-### 1. Verificación y Completitud de Traducciones (Backend)
-**Objetivo:** Asegurar que todos los procesos de backend que interactúan con el usuario (notificaciones, correos, errores, o utilidades de traducción) soporten correctamente los 3 idiomas.
+### 1. Optimización de Imágenes de Publicaciones (Recorte y WebP)
+**Objetivo:** Replicar el comportamiento de las imágenes de perfil para las imágenes de los posts, ahorrando espacio en Storage y mejorando los tiempos de carga en el cliente.
+* **Archivo principal a modificar:** `functions/src/storage/onImageUploaded.ts` (o crear un nuevo trigger `onPostImageUploaded.ts` si están separados).
+* **Instrucciones:**
+  1. Detectar cuando se sube una nueva imagen a la ruta de Storage correspondiente a las publicaciones (ej. `posts/{postId}/{imageId}`).
+  2. Utilizar la librería `sharp` (ya presente en el proyecto) para redimensionar la imagen a un tamaño óptimo para feeds (ej. max 1080x1080, manteniendo aspect ratio) y convertir el formato a `.webp`.
+  3. Subir la imagen optimizada y **eliminar** el archivo original pesado.
+  4. Actualizar el documento correspondiente en Firestore (`/posts/{postId}`) con la nueva URL de descarga del archivo `.webp`.
+  5. **Testing:** Escribir pruebas unitarias en `functions/test/` simulando la subida de una imagen pesada (.jpg/.png) y verificando la conversión y actualización en Firestore.
 
-**Instrucciones Atómicas:**
-1. **Auditoría de Utilidades de Traducción:** Revisar el archivo `functions/src/shared/translate.ts` para verificar la robustez de las integraciones de traducción automática o diccionarios estáticos.
-2. **Revisión de Notificaciones y Mensajes:** Analizar funciones de disparo (Triggers) como `postTriggers.ts`, `onMessageCreated.ts` y utilidades en `notifications/` para asegurar que los mensajes *push* enviados al frontend estén localizados o envíen las claves correctas (payload) para que el frontend los traduzca.
-3. **Validación de Respuestas de Error:** Comprobar que las Cloud Functions (ej. `secureUniversityRegistration.ts`, procesos del `matcher`, etc.) devuelvan códigos de error estandarizados en lugar de strings en un solo idioma, delegando la traducción final al frontend o resolviéndola según el idioma del usuario.
-4. **Pruebas Unitarias (i18n):** Implementar o actualizar los tests en `functions/test/` para validar que el sistema responde de forma segura y consistente cuando se simulan peticiones en los 3 idiomas manejados.
+### 2. Soporte para Metadatos en Chats (Imagen del Producto)
+**Objetivo:** Facilitar al Frontend la visualización de la imagen del producto en la vista de chats sin necesidad de hacer lecturas extra complejas.
+* **Archivo principal a modificar:** `functions/src/chats/getOrCreateChat.ts` y posiblemente `functions/src/posts/postTriggers.ts`.
+* **Instrucciones:**
+  1. Al crear un nuevo chat, asegurar que en los metadatos del documento de la conversación (colección `chats`) se guarde la referencia de la imagen principal del post (`postImageUrl`) y el título del post.
+  2. Si el post se actualiza, evaluar si es necesario actualizar esta referencia (opcional, pero recomendable para consistencia).
 
-### 2. Actualización Integral de la Documentación (Backend)
-**Objetivo:** Mantener sincronizada la documentación técnica (`docs/`) con el estado actual del código en producción y desarrollo.
-
-**Instrucciones Atómicas:**
-1. **Esquema de Base de Datos:** Leer el código de inicialización (`seed_db.ts`, `data/centers.json`) y las funciones de lectura/escritura para actualizar `docs/database.schema.md` con las colecciones y documentos exactos que existen hoy.
-2. **Reglas de Seguridad:** Analizar `database.rules.json` y el archivo `storage.rules`. Actualizar `docs/database.rules.md` y `docs/storage.rules.md` explicando de forma sencilla qué permite y qué restringe cada regla.
-3. **Mapa de Cloud Functions:** Revisar `functions/src/index.ts` y documentar en `docs/architecture.md` (o `implementation-status.md`) cada función exportada, su método de disparo (HTTP, Firestore trigger, etc.) y su propósito principal (ej. *matcher*, *feed*, *posts*, *chats*).
-4. **Instrucciones de Mantenimiento:** Actualizar el `README.md` con los comandos necesarios para desplegar las reglas, los índices, emular las funciones en local y ejecutar la suite de pruebas con Jest.
+### 3. Internacionalización (i18n) del Estado de "Conversación Iniciada"
+**Objetivo:** Evitar que el backend inyecte strings "hardcodeados" en un idioma específico, permitiendo que el Frontend lo traduzca.
+* **Archivo principal a modificar:** `functions/src/chats/getOrCreateChat.ts`.
+* **Instrucciones:**
+  1. Identificar dónde se inicializa el campo `lastMessage` (o equivalente) al crear la conversación.
+  2. Reemplazar el texto estático `"Conversación Iniciada"` por un código clave constante, como `"SYSTEM_MSG_CHAT_STARTED"`, o dejar el campo nulo/vacío si no hay un mensaje real del usuario.
+  3. Asegurar que las reglas de Firestore (`database/rules/`) sigan permitiendo la lectura/escritura de este nuevo formato.

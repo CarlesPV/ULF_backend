@@ -8,11 +8,16 @@ service firebase.storage {
     }
 
     // Objetos perdidos / encontrados
-    match /posts/{fileName} {
+    match /posts/{postId}/{imageId} {
       allow read: if isVerifiedUser();
       allow write: if isVerifiedUser() 
                    && request.resource.size < 5 * 1024 * 1024
                    && request.resource.contentType.matches('image/(jpeg|png)');
+    }
+
+    match /posts/{postId}/{imageId}.webp {
+      allow read: if isVerifiedUser();
+      allow write: if false; // Solo accesible vía Admin SDK (Cloud Functions)
     }
     
     // Fotos de perfil

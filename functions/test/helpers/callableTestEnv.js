@@ -10,7 +10,17 @@ class HttpsError extends Error {
 function snapshot(value, exists = value !== undefined && value !== null) {
   return {
     exists: jest.fn(() => exists),
-    val: jest.fn(() => value)
+    val: jest.fn(() => value),
+    forEach: jest.fn((callback) => {
+      if (value && typeof value === "object") {
+        Object.keys(value).forEach(key => {
+          callback({
+            key,
+            val: () => value[key]
+          });
+        });
+      }
+    })
   };
 }
 
@@ -51,7 +61,7 @@ function setupCallableTestEnv(options = {}) {
     authApi.deleteUser.mockResolvedValue(undefined);
   }
 
-  const makeRef = (pathName) => {
+  const makeRef = (pathName = "") => {
     const ref = {
       path: pathName,
       set: jest.fn(async (value) => {
@@ -76,6 +86,13 @@ function setupCallableTestEnv(options = {}) {
         }
 
         return asSnapshot(onceByPath.get(pathName));
+      }),
+      push: jest.fn(() => {
+        const newKey = `mock-key-${Date.now()}`;
+        const newPath = pathName ? `${pathName}/${newKey}` : newKey;
+        const newRef = makeRef(newPath);
+        newRef.key = newKey;
+        return newRef;
       })
     };
 
@@ -121,6 +138,10 @@ function setupCallableTestEnv(options = {}) {
     onValueUpdated: (_path, handler) => handler,
     onValueDeleted: (_path, handler) => handler
   }));
+  
+  jest.doMock("firebase-functions/v2/storage", () => ({
+    onObjectFinalized: (handler) => handler
+  }));
 
   jest.doMock(require.resolve("../../lib/shared/firebase"), () => ({ admin, db }));
 
@@ -144,6 +165,14 @@ function setupCallableTestEnv(options = {}) {
     translateClient: { translate: jest.fn() } // For compatibility if any
   }));
 
+  const labelDetection = jest.fn().mockResolvedValue([{
+    labelAnnotations: [{ description: "test label" }]
+  }]);
+
+  jest.doMock(require.resolve("../../lib/shared/vision"), () => ({
+    visionClient: { labelDetection }
+  }));
+
   return {
     admin,
     authApi,
@@ -152,6 +181,7 @@ function setupCallableTestEnv(options = {}) {
     queryKey,
     refMock,
     translateText,
+    labelDetection,
     writes
   };
 }
