@@ -1,17 +1,18 @@
-## Corrección Definitiva: Permisos de Storage y URLs de Imágenes
+## Mejoras en Chats y Corrección de Storage (Backend)
 
-### 1. Relajar Reglas de Firebase Storage (Error 403 y Lectura de Imágenes)
-**Objetivo:** Permitir que Flutter suba archivos sin rechazos por el MIME Type y que las imágenes se puedan leer sin enviar tokens Auth desde la red (requerido para `CachedNetworkImage`).
-* **Archivo principal:** `storage/rules/storage.rules`.
+### 1. Identificación Explícita del Publicador en los Chats [COMPLETADO]
+**Objetivo:** Proveer al frontend un mecanismo robusto para identificar inequívocamente al dueño del post asociado al chat, permitiendo extraer su nombre y foto de perfil independientemente de quién inicie la conversación.
+* **Archivo:** `functions/src/chats/getOrCreateChat.ts`
+* **Estado:** Finalizado. Se añadió `post_owner_id` y se mejoró la desnormalización de `usersInfo`.
 * **Instrucciones:**
-  1. En las reglas de escritura (`allow write`) para `/posts/{postId}/{imageName}` y `/users/...`, relajar el filtro del tipo de contenido: `request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream'`.
-  2. Modificar el permiso de lectura a público. Cambiar `allow read: if isAuthenticated();` por `allow read: if true;` para TODAS las imágenes (perfiles y posts). Esto es crítico para que las URLs manuales del backend se rendericen en el frontend.
+  1. En la construcción del objeto `chatData` (aproximadamente en la línea 36), añade un nuevo campo a nivel de raíz llamado `post_owner_id`.
+  2. Asigna a este campo el valor de la variable `postOwnerId` (ej. `post_owner_id: postOwnerId,`).
+  3. Asegúrate de que la sección `usersInfo` desnormalice correctamente los campos `displayName` y `photoUrl` tanto para el usuario que inicia (`uid`) como para el creador del post (`postOwnerId`), evitando valores indefinidos.
 
-### 2. Generar la URL Correcta de Firebase Storage
-**Objetivo:** Evitar guardar URLs de `storage.googleapis.com` (privadas) y guardar las URLs compatibles con Firebase (`firebasestorage.googleapis.com`).
-* **Archivos principales:** `functions/src/storage/onImageUploaded.ts` (y cualquier función que procese/guarde la imagen de perfil webp).
+
+### 2. Aseguramiento de Reglas de Storage frente a App Check
+**Objetivo:** Prevenir bloqueos 403 en subida de imágenes relacionados con reglas restrictivas y verificación de seguridad.
+* **Archivo:** `storage/rules/storage.rules`
 * **Instrucciones:**
-  1. Al guardar la URL de la imagen procesada en Firestore, NO usar la URL pública del bucket directo de GCS.
-  2. Generar la URL manualmente usando este formato exacto:
-     `const downloadUrl = \`https://firebasestorage.googleapis.com/v0/b/\${bucket.name}/o/\${encodeURIComponent(filePath)}?alt=media\`;`
-  3. Guardar este `downloadUrl` en `photoUrl` y `postImageUrl`.
+  1. Mantén la validación de seguridad de `request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream'`. La resolución estricta del Content-Type se hará en el Frontend, pero estas reglas aseguran que no se inyecten scripts.
+  2. Verifica el panel de Firebase App Check en la consola de Firebase. Si App Check está en modo "Enforcement" (Obligatorio) para Storage, debes documentar la necesidad de generar tokens de depuración (Debug Tokens) para los desarrolladores de Flutter o relajar temporalmente el `enforcement` en entornos locales.

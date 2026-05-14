@@ -42,6 +42,7 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
         id: newChatId,
         center_id: centerId,
         post_id: postId,
+        post_owner_id: postOwnerId,
         post_title: post?.title || postTitle || "Sin título",
         postImageUrl: post?.imageUrl || post?.image_url || post?.photoUrl || null, // Null explícito si no hay imagen
         members: {
@@ -51,12 +52,12 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
         // Desnormalización de info de usuarios para evitar consultas extra en el Feed de Chats
         usersInfo: {
             [uid]: {
-                displayName: userData?.name || "Usuario",
-                photoUrl: userData?.photo_url || userData?.photo_path || null
+                displayName: userData?.name || userData?.displayName || "Usuario",
+                photoUrl: userData?.photo_url || userData?.photo_path || userData?.photoUrl || null
             },
             [postOwnerId]: {
-                displayName: ownerData?.name || "Usuario",
-                photoUrl: ownerData?.photo_url || ownerData?.photo_path || null
+                displayName: ownerData?.name || ownerData?.displayName || "Usuario",
+                photoUrl: ownerData?.photo_url || ownerData?.photo_path || ownerData?.photoUrl || null
             }
         },
         created_at: admin.database.ServerValue.TIMESTAMP,
