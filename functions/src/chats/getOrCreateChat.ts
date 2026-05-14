@@ -42,8 +42,8 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
         id: newChatId,
         center_id: centerId,
         post_id: postId,
-        postTitle: post?.title || postTitle || "Sin título",
-        postImageUrl: post?.imageUrl || post?.image_url || null, // Null explícito si no hay imagen
+        post_title: post?.title || postTitle || "Sin título",
+        postImageUrl: post?.imageUrl || post?.image_url || post?.photoUrl || null, // Null explícito si no hay imagen
         members: {
             [uid]: true,
             [postOwnerId]: true

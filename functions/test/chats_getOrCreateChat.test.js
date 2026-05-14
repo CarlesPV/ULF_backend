@@ -36,7 +36,7 @@ describe("getOrCreateChat callable", () => {
         // Verificar que se guardó el chat con la imagen y título del POST desnormalizado
         const chatWrite = env.writes.find(w => w.path.startsWith("chats/"));
         expect(chatWrite.value).toEqual(expect.objectContaining({
-            postTitle: "Llaves perdidas",
+            post_title: "Llaves perdidas",
             postImageUrl: "https://storage.com/post-1.jpg",
             post_id: "post-1",
             usersInfo: expect.objectContaining({
