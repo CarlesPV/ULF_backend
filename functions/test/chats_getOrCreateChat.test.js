@@ -39,6 +39,7 @@ describe("getOrCreateChat callable", () => {
             post_title: "Llaves perdidas",
             postImageUrl: "https://storage.com/post-1.jpg",
             post_id: "post-1",
+            post_owner_id: "user-owner",
             usersInfo: expect.objectContaining({
                 "user-buyer": expect.any(Object),
                 "user-owner": expect.any(Object)
