@@ -44,9 +44,9 @@ Gestiona los perfiles de los usuarios de la plataforma.
 | `role` | `string` | ENUM validado en Security Rules: `"student"`, `"janitor"`, `"admin"`. |
 | `email` | `string` | Correo institucional UAB, validado en el registro. |
 | `name` | `string` | Nombre público del usuario. |
-| `photo_path` | `string` | URL o ID interno de Storage para la foto de perfil. |
-| `last_gps` | `object` | Objeto con latitud y longitud de la última ubicación conocida. |
-| `settings` | `object` | Configuración interna: `push_notifications` (boolean) y `dark_mode` (boolean). |
+| `photo_path` | `string` | Ruta interna en Firebase Storage (ej. `users/{uid}/profile_image.webp`). |
+| `photoUrl` | `string` | URL pública de la foto de perfil (generada tras optimización). |
+| `settings` | `object` | Configuración: `language` ("es"|"en"|"ca"), `push_notifications` (boolean) y `dark_mode` (boolean). |
 | `created_at` | `number` | Unix timestamp en milisegundos de la creación de la cuenta. |
 | `updated_at` | `number` | Unix timestamp en milisegundos de la última modificación. |
 | `is_deleted` | `boolean` | Bandera para borrado lógico. |
@@ -60,9 +60,9 @@ Gestiona los perfiles de los usuarios de la plataforma.
     "role": "student",
     "email": "1111111@uab.cat",
     "name": "Gabriel",
-    "photo_path": "profiles/uid_abc123.jpg",
-    "last_gps": { "lat": 1.123, "lng": 1.123 },
-    "settings": { "push_notifications": true, "dark_mode": false },
+    "photo_path": "users/uid_abc123/profile_image.webp",
+    "photoUrl": "https://storage.googleapis.com/...",
+    "settings": { "language": "es", "push_notifications": true, "dark_mode": false },
     "created_at": 1705320000000,
     "updated_at": 1705320000000,
     "is_deleted": false
@@ -83,13 +83,16 @@ Catálogo de objetos.
 | `type` | `string` | ENUM validado en Security Rules: `"lost"` o `"found"`. Indica si el usuario perdió o encontró el objeto. |
 | `title` | `string` | Título principal de la publicación. |
 | `description` | `string` | Texto descriptivo detallado. |
-| `category` | `string` | ENUM validado en Security Rules: `"accessories"`, `"clothing"`, `"devices"`, `"wallet"`, `"keys"`, `"bags"`, `"study"`, `"other"`. |
-| `status` | `string` | ENUM validado en Security Rules que representa el ciclo de vida de la publicación: `"active"`, `"matched"`, `"returned"`. |
-| `coords` | `object` | Objeto con latitud y longitud que marcan la ubicación exacta o probable. |
-| `photo_path` | `string` | URL o ruta de Storage para la imagen adjunta. |
-| `created_at` | `number` | Unix timestamp en milisegundos de la creación del reporte. |
-| `updated_at` | `number` | Unix timestamp en milisegundos de la última modificación del reporte. |
-| `is_deleted` | `boolean` | Bandera para borrado lógico. |
+| `translated_description` | `string` | Descripción traducida automáticamente al idioma común (Español) para búsquedas. |
+| `category` | `string` | ENUM validado en Security Rules: `"accessories"`, `"clothes"`, `"devices"`, `"wallets"`, `"keys"`, `"bags"`, `"study"`, `"others"`. |
+| `status` | `string` | ENUM: `"active"`, `"matched"`, `"returned"`. |
+| `coords` | `object` | Objeto con `lat`, `lng` y `geohash` (para búsquedas por cercanía). |
+| `photo_path` | `string` | Ruta de Storage para la imagen (ej. `posts/{post_id}/image.jpg`). |
+| `photo_url` | `string` | URL pública de la imagen (opcional). |
+| `vision_labels` | `string[]` | Etiquetas generadas por AI (Vision API) para mejorar las búsquedas. |
+| `created_at` | `number` | Unix timestamp de creación. |
+| `updated_at` | `number` | Unix timestamp de modificación. |
+| `is_deleted` | `boolean` | Borrado lógico. |
 
 ### Ejemplo JSON
 ```json
@@ -101,10 +104,12 @@ Catálogo de objetos.
     "type": "found",
     "title": "Llaves de casa",
     "description": "En la calle.",
+    "translated_description": "on the street.",
     "category": "keys",
     "status": "active",
-    "coords": { "lat": 1.123, "lng": 1.123 },
-    "photo_path": "posts/post_xyz789.jpg",
+    "coords": { "lat": 41.5, "lng": 2.1, "geohash": "sp3e..." },
+    "photo_path": "posts/post_xyz789/image.jpg",
+    "vision_labels": ["key", "metal"],
     "created_at": 1705325000000,
     "updated_at": 1705325000000,
     "is_deleted": false

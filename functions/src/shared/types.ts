@@ -34,6 +34,8 @@ export interface Post {
     is_deleted: boolean;
 }
 
+export type SupportedLanguage = "es" | "en" | "ca";
+
 export interface UserProfile {
     id: string;
     name: string;
@@ -41,6 +43,11 @@ export interface UserProfile {
     center_id: string;
     role: "student" | "admin";
     photoUrl?: string;
+    settings?: {
+        language?: SupportedLanguage;
+        push_notifications?: boolean;
+        dark_mode?: boolean;
+    };
     created_at: number;
     updated_at: number;
     is_deleted: boolean;

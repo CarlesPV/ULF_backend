@@ -124,16 +124,24 @@ function setupCallableTestEnv(options = {}) {
 
   jest.doMock(require.resolve("../../lib/shared/firebase"), () => ({ admin, db }));
 
-  const translate = jest.fn();
+  const translateText = jest.fn();
   if (options.translateRejects) {
-    translate.mockRejectedValue(options.translateRejects);
+    translateText.mockRejectedValue(options.translateRejects);
   } else {
-    translate.mockResolvedValue([options.translateResult || ""]);
+    translateText.mockResolvedValue(options.translateResult || "");
   }
 
+  const translateLabels = jest.fn(async (labelsText) => {
+    const translation = options.translateResult || labelsText;
+    return translation.split(",").map(l => l.trim().toLowerCase());
+  });
+
   jest.doMock(require.resolve("../../lib/shared/translate"), () => ({
-    TARGET_LANGUAGE: "en",
-    translateClient: { translate }
+    SUPPORTED_LANGUAGES: ["es", "en", "ca"],
+    DEFAULT_LANGUAGE: "es",
+    translateText,
+    translateLabels,
+    translateClient: { translate: jest.fn() } // For compatibility if any
   }));
 
   return {
@@ -143,7 +151,7 @@ function setupCallableTestEnv(options = {}) {
     HttpsError,
     queryKey,
     refMock,
-    translate,
+    translateText,
     writes
   };
 }
