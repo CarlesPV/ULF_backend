@@ -10,10 +10,13 @@ function createdEvent(post, postId = "post-1", update = jest.fn(async () => unde
   };
 }
 
-function updatedEvent(after, postId = "post-1") {
+function updatedEvent(after, postId = "post-1", before = after) {
   return {
     params: { postId },
     data: {
+      before: {
+        val: jest.fn(() => before)
+      },
       after: {
         val: jest.fn(() => after)
       }
@@ -150,5 +153,37 @@ describe("post triggers", () => {
         path: "active_posts/uab/post-3"
       }
     ]);
+  });
+
+  test("onPostUpdated syncs title and imageUrl to existing chats", async () => {
+    const env = setupCallableTestEnv({
+      onceByQuery: {
+        "chats|orderByChild:post_id|equalTo:post-1": {
+          "chat-1": { post_id: "post-1", post_title: "Viejo título" },
+          "chat-2": { post_id: "post-1", post_title: "Viejo título" }
+        }
+      }
+    });
+
+    const { onPostUpdated } = require("../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ title: "Viejo título", imageUrl: "old.jpg", center_id: "uab" }) },
+        after: { val: () => ({ title: "Nuevo título", imageUrl: "new.jpg", center_id: "uab", status: "active", is_deleted: false, created_at: 123 }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    // Debe haber una operación de 'update' en la raíz con los chats actualizados
+    const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateOp.value).toEqual({
+      "chats/chat-1/post_title": "Nuevo título",
+      "chats/chat-1/post_image_url": "new.jpg",
+      "chats/chat-2/post_title": "Nuevo título",
+      "chats/chat-2/post_image_url": "new.jpg"
+    });
   });
 });

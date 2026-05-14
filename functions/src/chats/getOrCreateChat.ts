@@ -29,20 +29,26 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
     if (chatId) return { chatId };
 
     // 3. Si no existe, crear uno nuevo
+    const postSnapshot = await db.ref(`posts/${postId}`).once("value");
+    const post = postSnapshot.val();
+    
     const newChatRef = chatsRef.push();
     const newChatId = newChatRef.key;
+    const finalTitle = post?.title || postTitle || "Sin título";
+    const finalImageUrl = post?.imageUrl || "";
 
     const chatData = {
         id: newChatId,
         center_id: centerId,
         post_id: postId,
-        post_title: postTitle,
+        post_title: finalTitle,
+        post_image_url: finalImageUrl,
         members: {
             [uid]: true,
             [postOwnerId]: true
         },
         created_at: admin.database.ServerValue.TIMESTAMP,
-        last_message: "Conversación iniciada",
+        last_message: "SYSTEM_MSG_CHAT_STARTED",
         last_message_time: admin.database.ServerValue.TIMESTAMP
     };
 
