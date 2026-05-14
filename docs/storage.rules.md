@@ -10,14 +10,11 @@ Este documento detalla las políticas de almacenamiento para imágenes de posts 
 
 ## Estructura de Directorios y Permisos
 
-### 1. Imágenes de Posts (`/posts/{postId}/{imageId}`)
-* **Lectura:** Cualquier usuario verificado.
-* **Escritura:** Cualquier usuario verificado.
-* **Restricciones:** < 5MB, tipo `image/jpeg` o `image/png`.
-
-### 2. Imágenes de Posts Optimizadas (`/posts/{postId}/{imageId}.webp`)
-* **Lectura:** Cualquier usuario verificado.
-* **Escritura:** Bloqueada para clientes. Generadas automáticamente por Cloud Functions en formato WebP (1080x1080).
+### 1. Imágenes de Posts (`/posts/{postId}/{imageName}`)
+* **Lectura:** Cualquier usuario verificado (incluye originales y .webp).
+* **Escritura (Originales):** Cualquier usuario verificado.
+    * **Restricciones:** < 5MB, tipo `image/jpeg` o `image/png`.
+* **Escritura (Optimizadas):** Bloqueada para clientes. Solo el Backend (Admin SDK) genera las versiones WebP.
 
 ### 3. Fotos de Perfil (`/users/{userId}/profile_image`)
 * **Lectura:** Cualquier usuario verificado.
