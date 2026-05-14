@@ -11,6 +11,41 @@ export interface PostReportPayload {
     photo_path?: string;
 }
 
+export interface Post {
+    id: string;
+    user_id: string;
+    center_id: string;
+    type: "lost" | "found";
+    title: string;
+    description: string;
+    translated_description?: string;
+    category: Category;
+    status: "active" | "matched" | "returned";
+    coords: {
+        lat: number;
+        lng: number;
+        geohash: string;
+    };
+    photo_path: string;
+    photo_url?: string;
+    vision_labels?: string[];
+    created_at: number;
+    updated_at: number;
+    is_deleted: boolean;
+}
+
+export interface UserProfile {
+    id: string;
+    name: string;
+    email: string;
+    center_id: string;
+    role: "student" | "admin";
+    photoUrl?: string;
+    created_at: number;
+    updated_at: number;
+    is_deleted: boolean;
+}
+
 export interface FeedFilterPayload {
     center_id: string;
     type: "lost" | "found";

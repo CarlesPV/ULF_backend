@@ -16,12 +16,18 @@ service firebase.storage {
     }
     
     // Fotos de perfil
-    match /profiles/{userId} {
+    match /users/{userId}/profile_image {
       allow read: if isVerifiedUser();
       allow write: if isVerifiedUser() 
                    && request.auth.uid == userId
                    && request.resource.size < 5 * 1024 * 1024
                    && request.resource.contentType.matches('image/(jpeg|png)');
+    }
+
+    // Versión optimizada (WebP)
+    match /users/{userId}/profile_image.webp {
+      allow read: if isVerifiedUser();
+      allow write: if false; // Solo accesible vía Admin SDK (Cloud Functions)
     }
   }
 }

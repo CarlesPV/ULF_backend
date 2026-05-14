@@ -60,8 +60,10 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
             potentialMatches.push({
                 id: post.id,
                 title: post.title,
+                description: post.description,
                 score: score,
-                photo_path: post.photo_path
+                photo_path: post.photo_path,
+                photo_url: post.photo_url || ""
             });
         }
     }
