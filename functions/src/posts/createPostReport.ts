@@ -1,7 +1,11 @@
 import * as functions from "firebase-functions";
 import * as geofire from "geofire-common";
 import { admin } from "../shared/firebase";
-import { PostReportPayload } from "../shared/types";
+import { PostReportPayload, Center } from "../shared/types";
+import { getHaversineDistance } from "../shared/utils";
+
+// Cache en memoria para minimizar lecturas a la base de datos
+const centersCache: Map<string, Center> = new Map();
 
 /*
     Función para crear un nuevo reporte de objeto perdido o encontrado.
@@ -28,15 +32,21 @@ export const createPostReport = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("invalid-argument", "Categoría no permitida.");
     }
 
-    // 3.5 Validación de límites geográficos (Bounding Box del Centro)
-    const centerSnap = await admin.database().ref(`centers/${center_id}`).once("value");
-    if (!centerSnap.exists()) {
-        throw new functions.https.HttpsError("not-found", "El centro especificado no existe.");
+    // 3.5 Validación de límites geográficos (Bounding Box y Radio Haversine)
+    let centerData = centersCache.get(center_id);
+
+    if (!centerData) {
+        const centerSnap = await admin.database().ref(`centers/${center_id}`).once("value");
+        if (!centerSnap.exists()) {
+            throw new functions.https.HttpsError("not-found", "El centro especificado no existe.");
+        }
+        centerData = centerSnap.val() as Center;
+        centersCache.set(center_id, centerData);
     }
 
-    const centerData = centerSnap.val();
-    const bounds = centerData.bounds;
+    const { bounds, center_lat, center_lng, radius_meters } = centerData;
 
+    // Validación por Bounding Box (rápida)
     if (bounds) {
         const isOutOfRange = 
             lat < bounds.latMin || 
@@ -47,7 +57,20 @@ export const createPostReport = functions.https.onCall(async (request) => {
         if (isOutOfRange) {
             throw new functions.https.HttpsError(
                 "out-of-range", 
-                "La ubicación seleccionada está fuera del campus o centro permitido."
+                "La ubicación seleccionada está fuera del campus (límites rectangulares)."
+            );
+        }
+    }
+
+    // Validación por Radio Haversine (precisa)
+    if (center_lat !== undefined && center_lng !== undefined && radius_meters !== undefined) {
+        const distance = getHaversineDistance(lat, lng, center_lat, center_lng);
+        const buffer = 50; // 50 metros de margen de error para GPS
+        
+        if (distance > (radius_meters + buffer)) {
+            throw new functions.https.HttpsError(
+                "out-of-range", 
+                `Ubicación demasiado lejana del centro (${Math.round(distance)}m). El máximo permitido es ${radius_meters + buffer}m.`
             );
         }
     }

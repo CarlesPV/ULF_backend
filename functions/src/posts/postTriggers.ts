@@ -1,7 +1,12 @@
 import { onValueCreated, onValueUpdated, onValueDeleted } from "firebase-functions/v2/database";
 import { admin } from "../shared/firebase";
+import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { notifyMultipleUsersOfMatch } from "../shared/notifications";
+import { getHaversineDistance } from "../shared/utils";
+
+// Cache para minimizar lecturas a DB en triggers de alta frecuencia
+const centersCache: Map<string, Center> = new Map();
 
 /*
     TRIGGER: Al crear un post:
@@ -14,6 +19,14 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
     const snapshot = event.data;
     const post = snapshot.val();
     if (!post?.center_id) return null;
+
+    // 0. Validación de Integridad Geográfica (Zero Trust)
+    const isValidLocation = await validatePostLocation(post);
+    if (!isValidLocation) {
+        console.warn(`Post ${event.params.postId} rechazado por ubicación inválida. Eliminando...`);
+        await snapshot.ref.remove();
+        return null;
+    }
 
     const tasks: Promise<any>[] = [];
 
@@ -225,4 +238,41 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
         console.error(`Error en búsqueda de matches para nuevo post ${postId}:`, error);
         // No lanzar error para no interrumpir el flujo de creación del post
     }
+}
+
+/**
+ * Valida si la ubicación de un post está dentro de los límites del centro.
+ */
+async function validatePostLocation(post: any): Promise<boolean> {
+    const { center_id, coords } = post;
+    if (!center_id || !coords?.lat || !coords?.lng) return false;
+
+    let centerData = centersCache.get(center_id);
+    if (!centerData) {
+        const centerSnap = await admin.database().ref(`centers/${center_id}`).once("value");
+        if (!centerSnap.exists()) return false;
+        centerData = centerSnap.val() as Center;
+        centersCache.set(center_id, centerData);
+    }
+
+    const { bounds, center_lat, center_lng, radius_meters } = centerData;
+
+    // 1. Validación Bounding Box
+    if (bounds) {
+        if (coords.lat < bounds.latMin || coords.lat > bounds.latMax ||
+            coords.lng < bounds.lngMin || coords.lng > bounds.lngMax) {
+            return false;
+        }
+    }
+
+    // 2. Validación Haversine
+    if (center_lat !== undefined && center_lng !== undefined && radius_meters !== undefined) {
+        const distance = getHaversineDistance(coords.lat, coords.lng, center_lat, center_lng);
+        const buffer = 50; // 50m de cortesía
+        if (distance > (radius_meters + buffer)) {
+            return false;
+        }
+    }
+
+    return true;
 }

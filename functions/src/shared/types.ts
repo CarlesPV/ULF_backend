@@ -76,5 +76,8 @@ export interface Center {
         lngMin: number;
         lngMax: number;
     };
+    center_lat?: number;
+    center_lng?: number;
+    radius_meters?: number;
     is_active: boolean;
 }
