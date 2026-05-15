@@ -47,7 +47,7 @@ describe("onImageUploaded trigger", () => {
     });
 
     test("handlePostImage optimizes image and updates database", async () => {
-        const { onImageUploaded } = require("../lib/storage/onImageUploaded");
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
         
         const event = {
             data: {
@@ -88,7 +88,7 @@ describe("onImageUploaded trigger", () => {
     });
 
     test("onImageUploaded ignores webp files in posts/ to avoid loops", async () => {
-        const { onImageUploaded } = require("../lib/storage/onImageUploaded");
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
         const sharp = require("sharp");
         
         const event = {
@@ -102,13 +102,61 @@ describe("onImageUploaded trigger", () => {
         expect(sharp).not.toHaveBeenCalled();
     });
 
+    test("onImageUploaded ignores unrelated storage paths", async () => {
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+        const sharp = require("sharp");
+
+        await onImageUploaded({
+            data: {
+                name: "other/path/image.jpg",
+                bucket: "test-bucket",
+                contentType: "image/jpeg"
+            }
+        });
+
+        expect(sharp).not.toHaveBeenCalled();
+        expect(bucketMock.upload).not.toHaveBeenCalled();
+    });
+
+    test("onImageUploaded ignores profile webp files to avoid loops", async () => {
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+        const sharp = require("sharp");
+
+        await onImageUploaded({
+            data: {
+                name: "users/user_abc/profile_image",
+                bucket: "test-bucket",
+                contentType: "image/webp"
+            }
+        });
+
+        expect(sharp).not.toHaveBeenCalled();
+        expect(bucketMock.upload).not.toHaveBeenCalled();
+    });
+
+    test("onImageUploaded ignores invalid post image paths", async () => {
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+        const sharp = require("sharp");
+
+        await onImageUploaded({
+            data: {
+                name: "posts/post-only",
+                bucket: "test-bucket",
+                contentType: "image/jpeg"
+            }
+        });
+
+        expect(sharp).not.toHaveBeenCalled();
+        expect(bucketMock.upload).not.toHaveBeenCalled();
+    });
+
     test("onImageUploaded handles errors gracefully", async () => {
         const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
         bucketMock.file = jest.fn(() => ({
             download: jest.fn().mockRejectedValue(new Error("Download failed"))
         }));
 
-        const { onImageUploaded } = require("../lib/storage/onImageUploaded");
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
         const event = {
             data: {
                 name: "posts/post-1/image-1.jpg",
@@ -120,8 +168,61 @@ describe("onImageUploaded trigger", () => {
         expect(errorSpy).toHaveBeenCalled();
     });
 
+    test("handlePostImage stores an empty label list when Vision returns no labels", async () => {
+        env.labelDetection.mockResolvedValue([{ labelAnnotations: [] }]);
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+
+        await onImageUploaded({
+            data: {
+                name: "posts/post-1/image-1.jpg",
+                bucket: "test-bucket",
+                contentType: "image/jpeg"
+            }
+        });
+
+        expect(env.writes).toContainEqual({
+            op: "update",
+            path: "posts/post-1",
+            value: expect.objectContaining({
+                vision_labels: []
+            })
+        });
+    });
+
+    test("handlePostImage handles Vision failures gracefully", async () => {
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+        env.labelDetection.mockRejectedValue(new Error("vision failed"));
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+
+        await onImageUploaded({
+            data: {
+                name: "posts/post-1/image-1.jpg",
+                bucket: "test-bucket",
+                contentType: "image/jpeg"
+            }
+        });
+
+        expect(errorSpy).toHaveBeenCalled();
+        expect(env.writes).toEqual([]);
+    });
+
+    test("handlePostImage cleans up temporary files", async () => {
+        const fs = require("fs");
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+
+        await onImageUploaded({
+            data: {
+                name: "posts/post-1/image-1.jpg",
+                bucket: "test-bucket",
+                contentType: "image/jpeg"
+            }
+        });
+
+        expect(fs.unlinkSync).toHaveBeenCalledTimes(2);
+    });
+
     test("handleProfileImage optimizes image and updates user profile with timestamp", async () => {
-        const { onImageUploaded } = require("../lib/storage/onImageUploaded");
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
         
         const event = {
             data: {

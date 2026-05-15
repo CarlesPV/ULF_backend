@@ -13,7 +13,7 @@ function verifiedRequest(data = {}) {
 describe("saveFcmToken", () => {
   test("stores the token under the authenticated user", async () => {
     const env = setupCallableTestEnv();
-    const { saveFcmToken } = require("../lib/notifications/saveFcmToken");
+    const { saveFcmToken } = require("../../lib/notifications/saveFcmToken");
 
     const result = await saveFcmToken(verifiedRequest({ token: "token-123" }));
 
@@ -32,7 +32,7 @@ describe("saveFcmToken", () => {
 
   test("rejects users without a verified email", async () => {
     setupCallableTestEnv();
-    const { saveFcmToken } = require("../lib/notifications/saveFcmToken");
+    const { saveFcmToken } = require("../../lib/notifications/saveFcmToken");
 
     await expect(saveFcmToken({
       auth: {
@@ -45,9 +45,30 @@ describe("saveFcmToken", () => {
 
   test("rejects missing tokens", async () => {
     setupCallableTestEnv();
-    const { saveFcmToken } = require("../lib/notifications/saveFcmToken");
+    const { saveFcmToken } = require("../../lib/notifications/saveFcmToken");
 
     await expect(saveFcmToken(verifiedRequest({})))
       .rejects.toMatchObject({ code: "invalid-argument" });
+  });
+
+  test("rejects non-string tokens", async () => {
+    setupCallableTestEnv();
+    const { saveFcmToken } = require("../../lib/notifications/saveFcmToken");
+
+    await expect(saveFcmToken(verifiedRequest({ token: 123 })))
+      .rejects.toMatchObject({ code: "invalid-argument" });
+  });
+
+  test("maps database write failures to an internal error", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    setupCallableTestEnv({
+      setRejectsByPath: {
+        "users/user-1/fcm_tokens/token-123": new Error("write failed")
+      }
+    });
+    const { saveFcmToken } = require("../../lib/notifications/saveFcmToken");
+
+    await expect(saveFcmToken(verifiedRequest({ token: "token-123" })))
+      .rejects.toMatchObject({ code: "internal" });
   });
 });
