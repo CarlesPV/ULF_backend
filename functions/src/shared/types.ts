@@ -43,6 +43,7 @@ export interface UserProfile {
     center_id: string;
     role: "student" | "admin";
     photoUrl?: string;
+    photoUpdatedAt?: number;
     settings?: {
         language?: SupportedLanguage;
         push_notifications?: boolean;
@@ -64,3 +65,16 @@ export interface FeedFilterPayload {
     sort_by?: "date" | "distance";
 }
 
+
+export interface Center {
+    id: string;
+    name: string;
+    email_domains: { [key: string]: boolean };
+    bounds: {
+        latMin: number;
+        latMax: number;
+        lngMin: number;
+        lngMax: number;
+    };
+    is_active: boolean;
+}

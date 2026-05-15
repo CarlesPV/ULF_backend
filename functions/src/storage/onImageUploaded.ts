@@ -49,15 +49,17 @@ async function handleProfileImage(event: any) {
             destination,
             metadata: { 
                 contentType: "image/webp",
-                cacheControl: "public,max-age=31536000"
+                cacheControl: "public, max-age=31536000"
             }
         });
 
         // Generar URL manual formato Firebase Storage para evitar problemas de Auth/CORS
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media`;
+        const timestamp = Date.now();
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media&t=${timestamp}`;
 
         await admin.database().ref(`users/${userId}`).update({
-            photoUrl: publicUrl
+            photoUrl: publicUrl,
+            photoUpdatedAt: timestamp
         });
 
         await bucket.file(filePath).delete();
@@ -99,7 +101,7 @@ async function handlePostImage(event: any) {
             destination,
             metadata: {
                 contentType: "image/webp",
-                cacheControl: "public,max-age=31536000"
+                cacheControl: "public, max-age=31536000"
             }
         });
 

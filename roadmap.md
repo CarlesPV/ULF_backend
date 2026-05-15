@@ -1,18 +1,26 @@
-## Mejoras en Chats y Corrección de Storage (Backend)
+# Roadmap Backend - Uni Lost & Found
 
-### 1. Identificación Explícita del Publicador en los Chats [COMPLETADO]
-**Objetivo:** Proveer al frontend un mecanismo robusto para identificar inequívocamente al dueño del post asociado al chat, permitiendo extraer su nombre y foto de perfil independientemente de quién inicie la conversación.
-* **Archivo:** `functions/src/chats/getOrCreateChat.ts`
-* **Estado:** Finalizado. Se añadió `post_owner_id` y se mejoró la desnormalización de `usersInfo`.
-* **Instrucciones:**
-  1. En la construcción del objeto `chatData` (aproximadamente en la línea 36), añade un nuevo campo a nivel de raíz llamado `post_owner_id`.
-  2. Asigna a este campo el valor de la variable `postOwnerId` (ej. `post_owner_id: postOwnerId,`).
-  3. Asegúrate de que la sección `usersInfo` desnormalice correctamente los campos `displayName` y `photoUrl` tanto para el usuario que inicia (`uid`) como para el creador del post (`postOwnerId`), evitando valores indefinidos.
+Este documento detalla las tareas atómicas que el agente de IA debe implementar en el backend (Firebase) para resolver errores y añadir las nuevas funcinalidades.
 
+## 1. Optimización de Caché en Imágenes de Perfil
+**Objetivo:** Evitar descargas constantes de la misma imagen de perfil.
+* **Paso 1.1:** Modificar la función `onImageUploaded.ts` (o crear una si no existe para imágenes de perfil) para establecer los metadatos de `Cache-Control` a `public, max-age=31536000` (1 año).
+* **Paso 1.2:** Asegurar que cuando el usuario sube una nueva imagen, la URL generada contenga un token único o se agregue un campo `photoUpdatedAt` (Timestamp) en el documento del usuario en la colección `users`, para forzar la invalidación en el cliente solo cuando sea necesario.
 
-### 2. Aseguramiento de Reglas de Storage frente a App Check
-**Objetivo:** Prevenir bloqueos 403 en subida de imágenes relacionados con reglas restrictivas y verificación de seguridad.
-* **Archivo:** `storage/rules/storage.rules`
-* **Instrucciones:**
-  1. Mantén la validación de seguridad de `request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream'`. La resolución estricta del Content-Type se hará en el Frontend, pero estas reglas aseguran que no se inyecten scripts.
-  2. Verifica el panel de Firebase App Check en la consola de Firebase. Si App Check está en modo "Enforcement" (Obligatorio) para Storage, debes documentar la necesidad de generar tokens de depuración (Debug Tokens) para los desarrolladores de Flutter o relajar temporalmente el `enforcement` en entornos locales.
+## 2. Sincronización de Datos Denormalizados en Chats
+**Objetivo:** Actualizar foto y nombre de usuario en conversaciones existentes cuando un usuario edita su perfil.
+* **Paso 2.1:** Crear una nueva Cloud Function en `functions/src/users/onUserProfileUpdated.ts`.
+* **Paso 2.2:** La función debe ejecutarse con el trigger `onDocumentUpdated('users/{userId}')`.
+* **Paso 2.3:** Si detecta cambios en `displayName` o `photoUrl`, debe buscar todos los documentos en la colección `chats` donde el array `participants` contenga el `userId`.
+* **Paso 2.4:** Ejecutar un `batch.update()` para actualizar la información de ese participante dentro del mapa o subcolección de participantes de cada chat afectado.
+
+## 3. Configuración de Límites Geográficos de Centros
+**Objetivo:** Definir los límites válidos (Bounding Box) de cada centro (ej. UAB) para validación.
+* **Paso 3.1:** Modificar el esquema de la base de datos (y `centers.json`) para incluir coordenadas límite en cada documento de la colección `centers`. Añadir `bounds`: `{ latMin: number, latMax: number, lngMin: number, lngMax: number }`.
+* **Paso 3.2:** Calcular y establecer los valores de `bounds` para la UAB y otros centros existentes sumando un margen de unos pocos kilómetros a las coordenadas centrales.
+
+## 4. Validación de Ubicación en Publicaciones
+**Objetivo:** Asegurar por seguridad que no se puedan crear posts fuera del rango del centro.
+* **Paso 4.1:** Modificar `functions/src/posts/postTriggers.ts` (o el endpoint de creación).
+* **Paso 4.2:** Antes de confirmar la creación de un post, si contiene coordenadas de ubicación, verificar que estén dentro del rango `bounds` del centro asociado al post/usuario.
+* **Paso 4.3:** Si está fuera de rango, lanzar un `functions.https.HttpsError` del tipo `out-of-range` para que el frontend lo capture.
