@@ -2,9 +2,10 @@ import * as functions from "firebase-functions";
 import { admin } from "../shared/firebase";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { I18N_STRINGS } from "../shared/i18n";
+import { notifyMatchFound } from "../shared/notifications";
 
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
-    const { center_id, category, type, color, description } = request.data;
+    const { center_id, category, type, color, description, notifyMatches = true } = request.data;
 
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
@@ -13,6 +14,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
+    const currentUserId = request.auth.uid;
     const targetType = (type === "found") ? "lost" : "found";
 
     // 1. Consultar solo IDs de posts activos usando el índice
@@ -41,6 +43,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
 
     // 4. Filtrado y Scoring
     const potentialMatches: any[] = [];
+    const matchPostIds: string[] = [];
     
     for (const snap of postSnapshots) {
         if (!snap.exists()) continue;
@@ -66,8 +69,41 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
                 photo_path: post.photo_path,
                 photo_url: post.photo_url || ""
             });
+            matchPostIds.push(post.id);
         }
     }
 
-    return { matches: potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5) };
+    // 5. Ordenar y limitar a top 5
+    const topMatches = potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5);
+
+    // 6. Enviar notificaciones a los usuarios de los posts encontrados (si está habilitado)
+    if (notifyMatches && topMatches.length > 0) {
+        const notificationPromises = topMatches.map(async (match) => {
+            try {
+                const postSnapshot = await admin.database().ref(`posts/${match.id}`).once("value");
+                if (postSnapshot.exists()) {
+                    const matchPost = postSnapshot.val();
+                    // Solo notificar si el post tiene un owner/creator
+                    if (matchPost.user_id && matchPost.user_id !== currentUserId) {
+                        await notifyMatchFound(matchPost.user_id, {
+                            id: match.id,
+                            title: match.title,
+                            description: match.description,
+                            photo_url: match.photo_url
+                        }, match.score);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error enviando notificación para match ${match.id}:`, error);
+                // No lanzar el error, solo loguear para no interrumpir el flujo principal
+            }
+        });
+
+        // Ejecutar notificaciones en paralelo pero sin bloquear la respuesta
+        Promise.all(notificationPromises).catch((error) => {
+            console.error("Error en envío de notificaciones:", error);
+        });
+    }
+
+    return { matches: topMatches };
 });

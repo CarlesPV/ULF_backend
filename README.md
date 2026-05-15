@@ -48,6 +48,38 @@ firebase deploy --only database,functions,storage
 - [Esquema de Datos](docs/database.schema.md)
 - [Reglas de Seguridad (DB)](docs/database.rules.md)
 - [Reglas de Storage](docs/storage.rules.md)
+- [🔔 Sistema de Notificaciones de Matches](IMPLEMENTATION_SUMMARY.md) **← NUEVO**
+
+## 🔔 Notificaciones de Matches (Nuevo en Mayo 2026)
+
+Se implementó un sistema automático de notificaciones que alerta a usuarios cuando se encuentran coincidencias de objetos:
+
+```
+Usuario A busca "Llavero" 
+    → Sistema encuentra matches
+    → Notifica a usuarios que publicaron objetos similares
+    → Usuarios reciben notificación push instantánea
+```
+
+O alternativamente:
+
+```
+Usuario B publica "Encontré llavero"
+    → Sistema busca automáticamente objetos perdidos similares
+    → Notifica a usuarios que están buscando
+    → Usuarios reciben notificación sin tener que buscar manualmente
+```
+
+**Características:**
+- ✅ Automático y en tiempo real
+- ✅ No interfiere con operaciones principales
+- ✅ Multiidioma (ES/EN/CA)
+- ✅ Usa Firebase Cloud Messaging (FCM)
+- ✅ Auto-limpieza de tokens inválidos
+
+**Documentación:**
+- [Implementación Completa](docs/match-notifications.md)
+- [Guía de Integración](docs/NOTIFICATION_INTEGRATION_GUIDE.md)
 
 ---
 *Desarrollado para el proyecto final de grado - UAB.*
