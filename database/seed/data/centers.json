@@ -17,6 +17,9 @@
             "lngMin": 2.08,
             "lngMax": 2.13
         },
+        "center_lat": 41.5008587,
+        "center_lng": 2.1042399,
+        "radius_meters": 1500,
         "is_active": true
     }
 ]

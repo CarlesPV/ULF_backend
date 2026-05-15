@@ -1,11 +1,11 @@
 const { setupCallableTestEnv } = require("./helpers/callableTestEnv");
 
-function createdEvent(post, postId = "post-1", update = jest.fn(async () => undefined)) {
+function createdEvent(post, postId = "post-1", update = jest.fn(async () => undefined), remove = jest.fn(async () => undefined)) {
   return {
     params: { postId },
     data: {
       val: jest.fn(() => post),
-      ref: { update }
+      ref: { update, remove }
     }
   };
 }
@@ -35,7 +35,15 @@ function deletedEvent(before, postId = "post-1") {
 
 describe("post triggers", () => {
   test("onPostCreated indexes active posts and stores translated descriptions", async () => {
-    const env = setupCallableTestEnv({ translateResult: "Blue Keys" });
+    const env = setupCallableTestEnv({
+      translateResult: "Blue Keys",
+      onceByPath: {
+        "centers/uab": {
+          id: "uab",
+          bounds: { latMin: 41.48, latMax: 41.52, lngMin: 2.08, lngMax: 2.13 }
+        }
+      }
+    });
     const update = jest.fn(async () => undefined);
     const { onPostCreated } = require("../lib/posts/postTriggers");
 
@@ -44,7 +52,8 @@ describe("post triggers", () => {
       status: "active",
       is_deleted: false,
       created_at: 123,
-      description: "Llaves azules"
+      description: "Llaves azules",
+      coords: { lat: 41.50, lng: 2.10 }
     }, "post-1", update));
 
     expect(env.writes).toEqual([
@@ -76,8 +85,16 @@ describe("post triggers", () => {
   });
 
   test("onPostCreated keeps indexing when translation fails", async () => {
-    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-    const env = setupCallableTestEnv({ translateRejects: new Error("translate failed") });
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => { });
+    const env = setupCallableTestEnv({
+      translateRejects: new Error("translate failed"),
+      onceByPath: {
+        "centers/uab": {
+          id: "uab",
+          bounds: { latMin: 41.48, latMax: 41.52, lngMin: 2.08, lngMax: 2.13 }
+        }
+      }
+    });
     const update = jest.fn(async () => undefined);
     const { onPostCreated } = require("../lib/posts/postTriggers");
 
@@ -86,7 +103,8 @@ describe("post triggers", () => {
       status: "active",
       is_deleted: false,
       created_at: 123,
-      description: "Llaves azules"
+      description: "Llaves azules",
+      coords: { lat: 41.50, lng: 2.10 }
     }, "post-1", update));
 
     expect(env.writes).toEqual([
@@ -184,6 +202,74 @@ describe("post triggers", () => {
       "chats/chat-1/post_image_url": "new.jpg",
       "chats/chat-2/post_title": "Nuevo título",
       "chats/chat-2/post_image_url": "new.jpg"
+    });
+  });
+
+  describe("geographic validation", () => {
+    const validCenter = {
+      id: "uab",
+      center_lat: 41.5008587,
+      center_lng: 2.1042399,
+      radius_meters: 1500,
+      bounds: { latMin: 41.48, latMax: 41.52, lngMin: 2.08, lngMax: 2.13 }
+    };
+
+    test("onPostCreated accepts posts within center bounds", async () => {
+      const env = setupCallableTestEnv({
+        onceByPath: { "centers/uab": validCenter }
+      });
+      const { onPostCreated } = require("../lib/posts/postTriggers");
+
+      await onPostCreated(createdEvent({
+        center_id: "uab",
+        status: "active",
+        is_deleted: false,
+        created_at: 123,
+        coords: { lat: 41.5008587, lng: 2.1042399 }
+      }));
+
+      expect(env.writes).toContainEqual(expect.objectContaining({
+        op: "set",
+        path: "active_posts/uab/post-1"
+      }));
+    });
+
+    test("onPostCreated deletes posts outside center bounds (Haversine)", async () => {
+      const env = setupCallableTestEnv({
+        onceByPath: { "centers/uab": validCenter }
+      });
+      const remove = jest.fn(async () => undefined);
+      const { onPostCreated } = require("../lib/posts/postTriggers");
+
+      // Coordenadas en Barcelona Centro (~20km de UAB)
+      await onPostCreated(createdEvent({
+        center_id: "uab",
+        status: "active",
+        is_deleted: false,
+        coords: { lat: 41.385063, lng: 2.173403 }
+      }, "post-fail", jest.fn(), remove));
+
+      expect(env.writes).not.toContainEqual(expect.objectContaining({
+        path: "active_posts/uab/post-fail"
+      }));
+      expect(remove).toHaveBeenCalled();
+    });
+
+    test("onPostCreated deletes posts outside Bounding Box", async () => {
+      const env = setupCallableTestEnv({
+        onceByPath: { "centers/uab": validCenter }
+      });
+      const remove = jest.fn(async () => undefined);
+      const { onPostCreated } = require("../lib/posts/postTriggers");
+
+      await onPostCreated(createdEvent({
+        center_id: "uab",
+        status: "active",
+        is_deleted: false,
+        coords: { lat: 41.0, lng: 2.0 }
+      }, "post-fail-box", jest.fn(), remove));
+
+      expect(remove).toHaveBeenCalled();
     });
   });
 });
