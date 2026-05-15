@@ -119,4 +119,40 @@ describe("onImageUploaded trigger", () => {
         await onImageUploaded(event);
         expect(errorSpy).toHaveBeenCalled();
     });
+
+    test("handleProfileImage optimizes image and updates user profile with timestamp", async () => {
+        const { onImageUploaded } = require("../lib/storage/onImageUploaded");
+        
+        const event = {
+            data: {
+                name: "users/user_abc/profile_image",
+                bucket: "test-bucket",
+                contentType: "image/jpeg"
+            }
+        };
+
+        await onImageUploaded(event);
+
+        // Verify upload with cache control
+        expect(bucketMock.upload).toHaveBeenCalledWith(
+            expect.stringContaining("optimized_user_abc"),
+            expect.objectContaining({ 
+                destination: "users/user_abc/profile_image.webp",
+                metadata: expect.objectContaining({ 
+                    contentType: "image/webp",
+                    cacheControl: "public, max-age=31536000"
+                })
+            })
+        );
+
+        // Verify DB update includes photoUrl with timestamp and photoUpdatedAt
+        expect(env.writes).toContainEqual({
+            op: "update",
+            path: "users/user_abc",
+            value: expect.objectContaining({
+                photoUrl: expect.stringContaining("&t="),
+                photoUpdatedAt: expect.any(Number)
+            })
+        });
+    });
 });

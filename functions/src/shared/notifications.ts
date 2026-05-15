@@ -1,5 +1,6 @@
 import { admin } from "./firebase";
-import { I18N_STRINGS } from "./i18n";
+import { getNotificationString } from "./i18n";
+import { SupportedLanguage } from "./types";
 
 /**
  * Tipo de notificación para matches
@@ -87,6 +88,7 @@ export async function sendNotificationToUser(
                             .ref(`users/${userId}/fcm_tokens/${token}`)
                             .remove();
                     }
+                    return null;
                 })
         );
 
@@ -121,12 +123,14 @@ export async function notifyMatchFound(
     },
     matchScore: number
 ): Promise<boolean> {
+    // 1. Obtener idioma del usuario
+    const userLangSnap = await admin.database().ref(`users/${userId}/settings/language`).once("value");
+    const lang = (userLangSnap.val() as SupportedLanguage) || "es";
+
     const payload: NotificationPayload = {
         type: NotificationType.MATCH_FOUND,
-        title: I18N_STRINGS.notifications?.match_found_title || "¡Coincidencia encontrada!",
-        body:
-            I18N_STRINGS.notifications?.match_found_body ||
-            `Se encontró un objeto que podría coincidir: "${matchPost.title}"`,
+        title: getNotificationString("match_found_title", lang),
+        body: getNotificationString("match_found_body", lang),
         data: {
             matchPostId: matchPost.id,
             matchTitle: matchPost.title,

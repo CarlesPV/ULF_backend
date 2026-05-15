@@ -28,6 +28,30 @@ export const createPostReport = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("invalid-argument", "Categoría no permitida.");
     }
 
+    // 3.5 Validación de límites geográficos (Bounding Box del Centro)
+    const centerSnap = await admin.database().ref(`centers/${center_id}`).once("value");
+    if (!centerSnap.exists()) {
+        throw new functions.https.HttpsError("not-found", "El centro especificado no existe.");
+    }
+
+    const centerData = centerSnap.val();
+    const bounds = centerData.bounds;
+
+    if (bounds) {
+        const isOutOfRange = 
+            lat < bounds.latMin || 
+            lat > bounds.latMax || 
+            lng < bounds.lngMin || 
+            lng > bounds.lngMax;
+
+        if (isOutOfRange) {
+            throw new functions.https.HttpsError(
+                "out-of-range", 
+                "La ubicación seleccionada está fuera del campus o centro permitido."
+            );
+        }
+    }
+
     // 4. Generar Geohash para futuras consultas espaciales
     const geohash = geofire.geohashForLocation([lat, lng]);
 
