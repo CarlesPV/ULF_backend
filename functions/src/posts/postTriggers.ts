@@ -114,23 +114,25 @@ export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any
     y notifica a los usuarios de los posts que coinciden.
     
     Flujo:
-    1. El nuevo post se crea y activa
+    1. El nuevo post se crea y activa en Firebase
     2. Se buscan posts activos del tipo opuesto en el mismo centro
     3. Se calcula relevancia por categoría y similitud de descripción
-    4. Se notifica a los usuarios de los posts con mejor score
+    4. Se filtra por umbral mínimo de relevancia (score >= 1.5)
+    5. Se notifica a usuarios de los top 5 posts con mejor score
     
-    Esta tarea corre en paralelo a indexing y traducción, no bloqueando el flujo principal.
+    IMPORTANTE: Solo se ejecuta cuando el post YA ESTÁ GUARDADO en Firebase.
+    Esto evita notificaciones sobre posts que nunca se materializaron.
 */
 async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<void> {
     try {
-        // 1. Validar que sea un post activo y tenga datos suficientes
+        // Validar que sea un post activo y tenga datos suficientes
         if (newPost.status !== "active" || newPost.is_deleted || !newPost.center_id) {
             return;
         }
 
         const targetType = newPost.type === "found" ? "lost" : "found";
 
-        // 2. Obtener IDs de posts activos del tipo opuesto
+        // Obtener IDs de posts activos del tipo opuesto
         const activePostsSnapshot = await admin
             .database()
             .ref(`active_posts/${newPost.center_id}`)
@@ -140,13 +142,13 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
 
         const activePostIds = Object.keys(activePostsSnapshot.val());
 
-        // 3. Cargar posts activos concurrentemente
+        // Cargar posts activos concurrentemente
         const postPromises = activePostIds.map((id) =>
             admin.database().ref(`posts/${id}`).once("value")
         );
         const postSnapshots = await Promise.all(postPromises);
 
-        // 4. Preparar términos de búsqueda del nuevo post
+        // Preparar términos de búsqueda del nuevo post
         let searchTerms = `${newPost.color || ""} ${newPost.description || ""}`.trim();
         let searchWords: string[] = [];
 
@@ -159,19 +161,19 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
             }
         }
 
-        // 5. Filtrar y calificar matches
-        const potentialMatches: { userId: string; post: any; score: number }[] = [];
+        // Filtrar y calificar matches
+        const potentialMatches: { userId: string; score: number }[] = [];
 
         for (const snap of postSnapshots) {
             if (!snap.exists()) continue;
-            const post = snap.val();
+            const existingPost = snap.val();
 
             // Solo matches del tipo opuesto, misma categoría, activos y no borrados
-            if (post.type === targetType && post.category === newPost.category && 
-                post.status === "active" && !post.is_deleted && post.user_id) {
+            if (existingPost.type === targetType && existingPost.category === newPost.category && 
+                existingPost.status === "active" && !existingPost.is_deleted && existingPost.user_id) {
                 
                 let score = 1.0;
-                const targetDesc = post.translated_description || post.description?.toLowerCase() || "";
+                const targetDesc = existingPost.translated_description || existingPost.description?.toLowerCase() || "";
 
                 // Scoring por palabras clave
                 if (searchWords.length > 0 && targetDesc) {
@@ -182,32 +184,38 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
                     score += matchCount * 0.5;
                 }
 
-                potentialMatches.push({
-                    userId: post.user_id,
-                    post: {
-                        id: snap.key || "",
-                        title: post.title,
-                        description: post.description,
-                        photo_url: post.photo_url || ""
-                    },
-                    score
-                });
+                // FIX CRÍTICO #3: Solo notificar si el score es lo suficientemente alto
+                // score >= 1.5 significa: categoría correcta + al menos 1 palabra coincide
+                if (score >= 1.5) {
+                    potentialMatches.push({
+                        userId: existingPost.user_id,
+                        score: score
+                    });
+                }
             }
         }
 
-        // 6. Notificar a usuarios de los top 5 matches
+        // Notificar a usuarios de los top 5 matches
         const topMatches = potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5);
 
+        // FIX CRÍTICOS #1 y #2: 
+        // - Enviamos los datos del NUEVO post (postId, newPost.title) al dueño del post ANTIGUO
+        // - Esto asegura que cuando el usuario toca la notificación, ve el objeto que acaba de publicarse
         for (const match of topMatches) {
             try {
-                await notifyMultipleUsersOfMatch([match.userId], match.post, match.score);
+                await notifyMultipleUsersOfMatch([match.userId], {
+                    id: postId,                    // ID del NUEVO post (el que acaba de crearse)
+                    title: newPost.title,          // Título del NUEVO post
+                    description: newPost.description,
+                    photo_url: newPost.photo_url || ""
+                }, match.score);
             } catch (error) {
-                console.error(`Error notificando usuario ${match.userId} sobre match ${match.post.id}:`, error);
+                console.error(`Error notificando usuario ${match.userId} sobre nuevo post ${postId}:`, error);
             }
         }
 
         if (topMatches.length > 0) {
-            console.log(`Post ${postId}: ${topMatches.length} matches encontrados y notificaciones enviadas`);
+            console.log(`Post ${postId}: ${topMatches.length} matches encontrados y notificaciones enviadas (umbral >= 1.5)`);
         }
 
     } catch (error) {
