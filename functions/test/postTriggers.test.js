@@ -40,7 +40,9 @@ describe("post triggers", () => {
       onceByPath: {
         "centers/uab": {
           id: "uab",
-          bounds: { latMin: 41.48, latMax: 41.52, lngMin: 2.08, lngMax: 2.13 }
+          bounds: { latMin: 41.48, latMax: 41.52, lngMin: 2.08, lngMax: 2.13 },
+          location: { lat: 41.50, lng: 2.10 },
+          radius_meters: 1500
         }
       }
     });
@@ -91,7 +93,9 @@ describe("post triggers", () => {
       onceByPath: {
         "centers/uab": {
           id: "uab",
-          bounds: { latMin: 41.48, latMax: 41.52, lngMin: 2.08, lngMax: 2.13 }
+          bounds: { latMin: 41.48, latMax: 41.52, lngMin: 2.08, lngMax: 2.13 },
+          location: { lat: 41.50, lng: 2.10 },
+          radius_meters: 1500
         }
       }
     });
@@ -208,8 +212,10 @@ describe("post triggers", () => {
   describe("geographic validation", () => {
     const validCenter = {
       id: "uab",
-      center_lat: 41.5008587,
-      center_lng: 2.1042399,
+      location: {
+        lat: 41.5008587,
+        lng: 2.1042399
+      },
       radius_meters: 1500,
       bounds: { latMin: 41.48, latMax: 41.52, lngMin: 2.08, lngMax: 2.13 }
     };

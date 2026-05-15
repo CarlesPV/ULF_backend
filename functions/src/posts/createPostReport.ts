@@ -22,10 +22,20 @@ export const createPostReport = functions.https.onCall(async (request) => {
 
     const { center_id, type, title, description, category, lat, lng, photo_path } = data;
 
-    // 3. Validación de datos mínimos requeridos
+    // 3. Validación de datos mínimos requeridos (Zero Trust)
     const allowedCategories = ["accessories", "clothes", "devices", "wallets", "keys", "bags", "study", "others"];
-    if (!center_id || !type || !category || !title || lat === undefined || lng === undefined) {
-        throw new functions.https.HttpsError("invalid-argument", "Datos incompletos para el reporte.");
+    
+    if (!center_id || !type || !category || !title) {
+        throw new functions.https.HttpsError("invalid-argument", "Datos básicos incompletos.");
+    }
+
+    // Validación explícita de coordenadas para evitar ceros falsos o nulos
+    if (lat === null || lat === undefined || lng === null || lng === undefined) {
+        throw new functions.https.HttpsError("invalid-argument", "Coordenadas geográficas requeridas (lat/lng).");
+    }
+
+    if (typeof lat !== "number" || typeof lng !== "number") {
+        throw new functions.https.HttpsError("invalid-argument", "Las coordenadas deben ser números válidos.");
     }
 
     if (!allowedCategories.includes(category)) {
@@ -44,7 +54,12 @@ export const createPostReport = functions.https.onCall(async (request) => {
         centersCache.set(center_id, centerData);
     }
 
-    const { bounds, center_lat, center_lng, radius_meters } = centerData;
+    const { bounds, location, radius_meters } = centerData;
+
+    if (!location || location.lat === undefined || location.lng === undefined) {
+        console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada.`);
+        throw new functions.https.HttpsError("internal", "Error de configuración del centro (ubicación faltante).");
+    }
 
     // Validación por Bounding Box (rápida)
     if (bounds) {
@@ -63,16 +78,14 @@ export const createPostReport = functions.https.onCall(async (request) => {
     }
 
     // Validación por Radio Haversine (precisa)
-    if (center_lat !== undefined && center_lng !== undefined && radius_meters !== undefined) {
-        const distance = getHaversineDistance(lat, lng, center_lat, center_lng);
-        const buffer = 50; // 50 metros de margen de error para GPS
-        
-        if (distance > (radius_meters + buffer)) {
-            throw new functions.https.HttpsError(
-                "out-of-range", 
-                `Ubicación demasiado lejana del centro (${Math.round(distance)}m). El máximo permitido es ${radius_meters + buffer}m.`
-            );
-        }
+    const distance = getHaversineDistance(lat, lng, location.lat, location.lng);
+    const buffer = 50; // 50 metros de margen de error para GPS
+    
+    if (distance > (radius_meters + buffer)) {
+        throw new functions.https.HttpsError(
+            "out-of-range", 
+            `Ubicación demasiado lejana del centro (${Math.round(distance)}m). El máximo permitido es ${radius_meters + buffer}m.`
+        );
     }
 
     // 4. Generar Geohash para futuras consultas espaciales

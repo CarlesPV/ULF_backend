@@ -7,7 +7,7 @@
             ],
             "$center_id": {
                 ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-                ".validate": "newData.hasChildren(['id', 'name', 'email_domains', 'boundary_coords', 'is_active'])"
+                ".validate": "newData.hasChildren(['id', 'name', 'email_domains', 'boundary_coords', 'location', 'is_active']) && newData.child('location').hasChildren(['lat', 'lng']) && newData.child('location/lat').isNumber() && newData.child('location/lng').isNumber()"
             }
         },
         "users": {
@@ -36,7 +36,7 @@
             ],
             "$post_id": {
                 ".write": "auth != null && auth.token.email_verified === true && (!data.exists() || data.child('user_id').val() === auth.uid)",
-                ".validate": "newData.hasChildren(['id', 'user_id', 'center_id', 'type', 'title', 'category', 'status', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $post_id",
+                ".validate": "newData.hasChildren(['id', 'user_id', 'center_id', 'type', 'title', 'category', 'status', 'coords', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $post_id && newData.child('coords').hasChildren(['lat', 'lng', 'geohash']) && newData.child('coords/lat').isNumber() && newData.child('coords/lng').isNumber()",
                 "user_id": {
                     ".validate": "!data.exists() || newData.val() === data.val()"
                 },

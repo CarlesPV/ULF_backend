@@ -1,15 +1,18 @@
-## Tareas Pendientes: Seguridad y Validación de Datos Geográficos
+## Correcciones de Emergencia: Saneamiento de Datos Geográficos y Fallbacks
 
-A continuación se detallan las tareas que el agente de IA debe implementar en el repositorio del Backend (Firebase). Las instrucciones priorizan la seguridad en la validación de los datos entrantes para evitar que clientes maliciosos ignoren las reglas del Frontend.
+Las siguientes tareas deben ser implementadas en el Backend para proteger al Frontend de caídas (crashes) debido a datos geográficos nulos o incompletos enviados desde la base de datos, y asegurar la validación estricta.
 
-### 1. Validación de Coordenadas de Publicaciones en el Servidor
-**Objetivo:** Complementar la tarea del frontend rechazando cualquier publicación (Post) cuya ubicación (latitud/longitud) se encuentre fuera de los límites del centro (universidad) correspondiente, asegurando así la integridad de los datos en la base de datos.
-* **Archivos implicados:** `functions/src/posts/postTriggers.ts` (o `createPostReport.ts` dependiendo del flujo de creación), `database/seed/data/centers.json` (para estructura de datos).
+### 1. Asegurar Integridad de Coordenadas de los Centros (Seed y DB)
+**Objetivo:** Garantizar que ningún centro/universidad carezca de coordenadas válidas, previniendo errores de nulidad matemáticos en el Frontend.
+* **Archivos implicados:** `database/seed/data/centers.json`, reglas de base de datos/Firestore.
 * **Instrucciones:**
-  1. Interceptar la creación de un nuevo objeto perdido/encontrado mediante una Cloud Function (ej. `onWrite` u `onCreate` en el nodo/colección de posts, o dentro del Callable si la creación es mediante API).
-  2. Extraer el `centerId` y el objeto `location` (latitud y longitud) del post entrante.
-  3. Consultar la información geográfica del centro desde Firebase (cuyos datos provienen originalmente de `centers.json`).
-  4. Programar una función de utilidad en `functions/src/shared/utils.ts` que calcule la distancia en metros entre dos coordenadas (Haversine formula).
-  5. Calcular la distancia entre el post y el centro de la universidad. Si la ubicación excede el radio máximo permitido (ej. radio de la universidad + un pequeño buffer para errores de GPS), rechazar la operación.
-  6. En caso de rechazo, lanzar un error tipado de Firebase (ej. `functions.https.HttpsError('out-of-range', 'Location outside center bounds')`) o eliminar el nodo si se procesa post-escritura.
-  7. **Pruebas:** Escribir casos de prueba en `functions/test/postTriggers.test.js` enviando un post con coordenadas válidas (debe ser aceptado) y otro post con coordenadas de otra ciudad (debe ser rechazado o revertido).
+  1. Revisar el archivo `centers.json` y asegurar que todos los objetos de universidades tengan una estructura `location` estricta con propiedades numéricas no nulas `lat` y `lng` (o `latitude`/`longitude`).
+  2. Modificar las reglas de seguridad (`database.rules.json` o equivalentes) para rechazar la creación o edición de cualquier documento de `centers` que no contenga coordenadas geográficas válidas (tipo de dato número).
+
+### 2. Reforzar Validación Geográfica en Creación de Posts
+**Objetivo:** Implementar la validación final y absoluta que rechace publicaciones fuera de rango o sin coordenadas si el Frontend falla en validarlo localmente.
+* **Archivos implicados:** `functions/src/posts/postTriggers.ts` (o `createPostReport.ts`).
+* **Instrucciones:**
+  1. Al inicio del Trigger/Callable, añadir una verificación estricta de nulidad para las coordenadas recibidas. Si `post.location` es nulo o indefinido, lanzar inmediatamente un `functions.https.HttpsError('invalid-argument', 'Coordenadas requeridas')`.
+  2. Obtener los datos del `centerId`. Si el centro devuelto no tiene ubicación definida, registrar un error crítico en los logs del backend y abortar la creación.
+  3. Ejecutar el cálculo de la fórmula de Haversine. Si excede el radio dinámico de la universidad, rechazar el post (`functions.https.HttpsError('failed-precondition', 'Location outside boundaries')`).
