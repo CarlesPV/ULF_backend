@@ -71,4 +71,3 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
 
     return { matches: potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5) };
 });
-});

@@ -37,13 +37,16 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
         );
     }
 
-    // Buscar matches automáticamente en paralelo (sin bloquear)
+    // Añadir la búsqueda de matches a las tareas que deben completarse antes de cerrar la función
     if (post.status === "active" && post.is_deleted === false) {
-        notifyMatchesForNewPost(event.params.postId, post).catch((error: any) => {
-            console.error(`Error en búsqueda de matches para post ${event.params.postId}:`, error);
-        });
+        tasks.push(
+            notifyMatchesForNewPost(event.params.postId, post).catch((error: any) => {
+                console.error(`Error en búsqueda de matches para post ${event.params.postId}:`, error);
+            })
+        );
     }
 
+    // Ahora Firebase esperará a que TODO (índice, traducción y matches) termine
     await Promise.all(tasks);
     return null;
 });
