@@ -14,6 +14,11 @@ interface Center {
     name: string;
     email_domains: Record<string, true>;
     boundary_coords: BoundaryCoords;
+    location: {
+        lat: number;
+        lng: number;
+    };
+    radius_meters: number;
     is_active: boolean;
 }
 

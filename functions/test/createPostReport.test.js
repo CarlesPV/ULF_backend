@@ -13,7 +13,12 @@ describe("createPostReport", () => {
                         latMax: 41.52,
                         lngMin: 2.08,
                         lngMax: 2.13
-                    }
+                    },
+                    location: {
+                        lat: 41.50,
+                        lng: 2.10
+                    },
+                    radius_meters: 1500
                 }
             }
         });
@@ -40,6 +45,54 @@ describe("createPostReport", () => {
         } catch (error) {
             expect(error.code).toBe("out-of-range");
             expect(error.message).toContain("fuera del campus");
+        }
+    });
+
+    test("should throw invalid-argument error if coordinates are null (Zero Trust)", async () => {
+        const { createPostReport } = require("../lib/posts/createPostReport");
+        
+        const request = {
+            auth: { uid: "user1", token: { email_verified: true } },
+            data: {
+                center_id: "uab",
+                type: "found",
+                title: "Objeto perdido",
+                category: "others",
+                lat: null, // Caso de prueba Zero Trust
+                lng: 2.10
+            }
+        };
+
+        try {
+            await createPostReport(request);
+            fail("Should have thrown an error");
+        } catch (error) {
+            expect(error.code).toBe("invalid-argument");
+            expect(error.message).toContain("Coordenadas geográficas requeridas");
+        }
+    });
+
+    test("should throw invalid-argument error if coordinates are not numbers", async () => {
+        const { createPostReport } = require("../lib/posts/createPostReport");
+        
+        const request = {
+            auth: { uid: "user1", token: { email_verified: true } },
+            data: {
+                center_id: "uab",
+                type: "found",
+                title: "Objeto perdido",
+                category: "others",
+                lat: "41.50", // String en lugar de number
+                lng: 2.10
+            }
+        };
+
+        try {
+            await createPostReport(request);
+            fail("Should have thrown an error");
+        } catch (error) {
+            expect(error.code).toBe("invalid-argument");
+            expect(error.message).toContain("deben ser números válidos");
         }
     });
 

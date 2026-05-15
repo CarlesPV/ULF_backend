@@ -255,7 +255,12 @@ async function validatePostLocation(post: any): Promise<boolean> {
         centersCache.set(center_id, centerData);
     }
 
-    const { bounds, center_lat, center_lng, radius_meters } = centerData;
+    const { bounds, location, radius_meters } = centerData;
+
+    if (!location || location.lat === undefined || location.lng === undefined) {
+        console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada en DB.`);
+        return false;
+    }
 
     // 1. Validación Bounding Box
     if (bounds) {
@@ -266,12 +271,10 @@ async function validatePostLocation(post: any): Promise<boolean> {
     }
 
     // 2. Validación Haversine
-    if (center_lat !== undefined && center_lng !== undefined && radius_meters !== undefined) {
-        const distance = getHaversineDistance(coords.lat, coords.lng, center_lat, center_lng);
-        const buffer = 50; // 50m de cortesía
-        if (distance > (radius_meters + buffer)) {
-            return false;
-        }
+    const distance = getHaversineDistance(coords.lat, coords.lng, location.lat, location.lng);
+    const buffer = 50; // 50m de cortesía
+    if (distance > (radius_meters + buffer)) {
+        return false;
     }
 
     return true;
