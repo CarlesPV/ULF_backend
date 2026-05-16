@@ -10,7 +10,8 @@ Almacena la configuración y metadatos de cada universidad o centro adherido.
 | `id` | `string` | ID único del centro. |
 | `name` | `string` | Nombre oficial de la institución (ej. "Universidad Autónoma de Barcelona"). |
 | `email_domains` | `object` | Mapa de dominios para validar automáticamente a qué centro pertenece un usuario al registrarse. Las claves usan guiones bajos en lugar de puntos porque Firebase no permite puntos en claves (ej. `"uab_cat"` representa `uab.cat`). Se usa un objeto en lugar de una lista para evitar bloqueos de concurrencia. |
-| `boundary_coords` | `object` | Objeto que contiene `lat_min`, `lat_max`, `lng_min`, `lng_max` para delimitar el área del mapa donde se pueden poner "chinchetas". |
+| `boundary_coords` | `object` | Objeto que contiene `lat_min`, `lat_max`, `lng_min`, `lng_max` para delimitar el área del mapa (Bounding Box). |
+| `boundaries` | `array` | Lista de objetos `{lat, lng}` que forman un polígono para validación precisa de geocerca. |
 | `is_active` | `boolean` | Bandera para activar o desactivar un centro entero en la plataforma. |
 
 ### Ejemplo JSON
@@ -24,9 +25,14 @@ Almacena la configuración y metadatos de cada universidad o centro adherido.
       "e-campus_uab_cat": true
     },
     "boundary_coords": {
-      "lat_min": 1.123, "lat_max": 1.123,
-      "lng_min": 1.123, "lng_max": 1.123
+      "lat_min": 41.49, "lat_max": 41.51,
+      "lng_min": 2.09, "lng_max": 2.12
     },
+    "boundaries": [
+      { "lat": 41.50, "lng": 2.11 },
+      { "lat": 41.50, "lng": 2.12 },
+      { "lat": 41.49, "lng": 2.11 }
+    ],
     "is_active": true
   }
 }

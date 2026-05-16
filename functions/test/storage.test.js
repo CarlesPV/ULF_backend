@@ -140,7 +140,7 @@ describe("onImageUploaded trigger", () => {
                 destination: "users/user_abc/profile_image.webp",
                 metadata: expect.objectContaining({ 
                     contentType: "image/webp",
-                    cacheControl: "public, max-age=31536000"
+                    cacheControl: "public, max-age=3600, s-maxage=3600"
                 })
             })
         );

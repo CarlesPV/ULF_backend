@@ -75,12 +75,12 @@ describe("post triggers", () => {
     const env = setupCallableTestEnv();
     const { onPostCreated } = require("../lib/posts/postTriggers");
 
-    await onPostCreated(createdEvent({
+    await expect(onPostCreated(createdEvent({
       center_id: "uab",
       status: "matched",
       is_deleted: false,
       created_at: 123
-    }));
+    }))).rejects.toThrow();
 
     expect(env.writes).toEqual([]);
     expect(env.translateText).not.toHaveBeenCalled();
@@ -248,12 +248,12 @@ describe("post triggers", () => {
       const { onPostCreated } = require("../lib/posts/postTriggers");
 
       // Coordenadas en Barcelona Centro (~20km de UAB)
-      await onPostCreated(createdEvent({
+      await expect(onPostCreated(createdEvent({
         center_id: "uab",
         status: "active",
         is_deleted: false,
         coords: { lat: 41.385063, lng: 2.173403 }
-      }, "post-fail", jest.fn(), remove));
+      }, "post-fail", jest.fn(), remove))).rejects.toThrow();
 
       expect(env.writes).not.toContainEqual(expect.objectContaining({
         path: "active_posts/uab/post-fail"
@@ -268,12 +268,12 @@ describe("post triggers", () => {
       const remove = jest.fn(async () => undefined);
       const { onPostCreated } = require("../lib/posts/postTriggers");
 
-      await onPostCreated(createdEvent({
+      await expect(onPostCreated(createdEvent({
         center_id: "uab",
         status: "active",
         is_deleted: false,
         coords: { lat: 41.0, lng: 2.0 }
-      }, "post-fail-box", jest.fn(), remove));
+      }, "post-fail-box", jest.fn(), remove))).rejects.toThrow();
 
       expect(remove).toHaveBeenCalled();
     });

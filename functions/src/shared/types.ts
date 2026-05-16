@@ -81,5 +81,9 @@ export interface Center {
         lng: number;
     };
     radius_meters: number;
+    boundaries?: {
+        lat: number;
+        lng: number;
+    }[];
     is_active: boolean;
 }

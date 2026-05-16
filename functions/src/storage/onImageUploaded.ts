@@ -49,7 +49,7 @@ async function handleProfileImage(event: any) {
             destination,
             metadata: { 
                 contentType: "image/webp",
-                cacheControl: "public, max-age=31536000"
+                cacheControl: "public, max-age=3600, s-maxage=3600"
             }
         });
 
@@ -101,7 +101,7 @@ async function handlePostImage(event: any) {
             destination,
             metadata: {
                 contentType: "image/webp",
-                cacheControl: "public, max-age=31536000"
+                cacheControl: "public, max-age=3600, s-maxage=3600"
             }
         });
 
