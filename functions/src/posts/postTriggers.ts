@@ -1,4 +1,5 @@
 import { onValueCreated, onValueUpdated, onValueDeleted } from "firebase-functions/v2/database";
+import { HttpsError } from "firebase-functions/v2/https";
 import { admin } from "../shared/firebase";
 import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
@@ -21,11 +22,12 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
     if (!post?.center_id) return null;
 
     // 0. Validación de Integridad Geográfica (Zero Trust)
-    const isValidLocation = await validatePostLocation(post);
-    if (!isValidLocation) {
+    try {
+        await validatePostLocation(post);
+    } catch (error: any) {
         console.warn(`Post ${event.params.postId} rechazado por ubicación inválida. Eliminando...`);
         await snapshot.ref.remove();
-        return null;
+        throw error;
     }
 
     const tasks: Promise<any>[] = [];
@@ -243,39 +245,65 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
 /**
  * Valida si la ubicación de un post está dentro de los límites del centro.
  */
-async function validatePostLocation(post: any): Promise<boolean> {
+async function validatePostLocation(post: any): Promise<void> {
     const { center_id, coords } = post;
-    if (!center_id || !coords?.lat || !coords?.lng) return false;
+    if (!center_id || !coords?.lat || !coords?.lng) {
+        throw new HttpsError("invalid-argument", "Datos geográficos incompletos.");
+    }
 
     let centerData = centersCache.get(center_id);
     if (!centerData) {
         const centerSnap = await admin.database().ref(`centers/${center_id}`).once("value");
-        if (!centerSnap.exists()) return false;
+        if (!centerSnap.exists()) {
+            throw new HttpsError("not-found", "El centro asociado no existe.");
+        }
         centerData = centerSnap.val() as Center;
         centersCache.set(center_id, centerData);
     }
 
-    const { bounds, location, radius_meters } = centerData;
+    const { bounds, location, radius_meters, boundaries } = centerData;
+
+    // 1. Validación por Polígono (Prioritaria si existe)
+    if (boundaries && boundaries.length > 0) {
+        if (!isPointInPolygon(coords, boundaries)) {
+            throw new HttpsError("out-of-range", "La ubicación está fuera de los límites (boundaries) del centro.");
+        }
+        return; // Si pasa el polígono, es suficiente
+    }
 
     if (!location || location.lat === undefined || location.lng === undefined) {
         console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada en DB.`);
-        return false;
+        throw new HttpsError("internal", "Configuración de centro inválida.");
     }
 
-    // 1. Validación Bounding Box
+    // 2. Validación Bounding Box (Fallback)
     if (bounds) {
         if (coords.lat < bounds.latMin || coords.lat > bounds.latMax ||
             coords.lng < bounds.lngMin || coords.lng > bounds.lngMax) {
-            return false;
+            throw new HttpsError("out-of-range", "La ubicación está fuera del área rectangular del centro.");
         }
     }
 
-    // 2. Validación Haversine
+    // 3. Validación Haversine (Fallback)
     const distance = getHaversineDistance(coords.lat, coords.lng, location.lat, location.lng);
     const buffer = 50; // 50m de cortesía
     if (distance > (radius_meters + buffer)) {
-        return false;
+        throw new HttpsError("out-of-range", "La ubicación está demasiado lejos del centro.");
     }
+}
 
-    return true;
+/**
+ * Algoritmo de Ray Casting para verificar si un punto está dentro de un polígono.
+ * Optimizado para geocoordenadas.
+ */
+function isPointInPolygon(point: { lat: number; lng: number }, polygon: { lat: number; lng: number }[]): boolean {
+    let isInside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].lat, yi = polygon[i].lng;
+        const xj = polygon[j].lat, yj = polygon[j].lng;
+        const intersect = ((yi > point.lng) !== (yj > point.lng)) &&
+            (point.lat < (xj - xi) * (point.lng - yi) / (yj - yi) + xi);
+        if (intersect) isInside = !isInside;
+    }
+    return isInside;
 }
