@@ -11,6 +11,33 @@ function verifiedRequest(data = {}) {
 }
 
 describe("checkPotentialMatches", () => {
+  test("rejects users without a verified email", async () => {
+    setupCallableTestEnv();
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    await expect(checkPotentialMatches({
+      auth: {
+        uid: "user-1",
+        token: { email_verified: false }
+      },
+      data: {
+        center_id: "uab",
+        type: "found",
+        category: "keys"
+      }
+    })).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
+  test("rejects incomplete match requests", async () => {
+    setupCallableTestEnv();
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    await expect(checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found"
+    }))).rejects.toMatchObject({ code: "invalid-argument" });
+  });
+
   test("reads active post ids and returns the highest scoring candidates", async () => {
     const env = setupCallableTestEnv({
       onceByPath: {
@@ -49,7 +76,7 @@ describe("checkPotentialMatches", () => {
       },
       translateResult: "blue ribbon"
     });
-    const { checkPotentialMatches } = require("../lib/matcher/checkPotentialMatches");
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
 
     const result = await checkPotentialMatches(verifiedRequest({
       center_id: "uab",
@@ -83,7 +110,7 @@ describe("checkPotentialMatches", () => {
       },
       translateResult: "blue"
     });
-    const { checkPotentialMatches } = require("../lib/matcher/checkPotentialMatches");
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
 
     const result = await checkPotentialMatches(verifiedRequest({
       center_id: "uab",
@@ -93,6 +120,27 @@ describe("checkPotentialMatches", () => {
 
     expect(result).toEqual({ matches: [] });
   });
+
+  test("ignores active index entries whose post snapshot no longer exists", async () => {
+    setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab": {
+          "missing-1": 100
+        },
+        "posts/missing-1": null
+      }
+    });
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys"
+    }));
+
+    expect(result).toEqual({ matches: [] });
+  });
+
 
   test("returns a base score when only type and category match", async () => {
     const env = setupCallableTestEnv({
@@ -131,7 +179,7 @@ describe("checkPotentialMatches", () => {
         }
       }
     });
-    const { checkPotentialMatches } = require("../lib/matcher/checkPotentialMatches");
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
 
     const result = await checkPotentialMatches(verifiedRequest({
       center_id: "uab",
@@ -173,7 +221,7 @@ describe("checkPotentialMatches", () => {
       },
       translateRejects: new Error("translate failed")
     });
-    const { checkPotentialMatches } = require("../lib/matcher/checkPotentialMatches");
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
 
     const result = await checkPotentialMatches(verifiedRequest({
       center_id: "uab",
@@ -222,7 +270,7 @@ describe("checkPotentialMatches", () => {
       },
       translateResult: "alpha beta gamma"
     });
-    const { checkPotentialMatches } = require("../lib/matcher/checkPotentialMatches");
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
 
     const result = await checkPotentialMatches(verifiedRequest({
       center_id: "uab",
