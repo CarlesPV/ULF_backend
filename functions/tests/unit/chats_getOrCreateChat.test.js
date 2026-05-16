@@ -49,7 +49,7 @@ describe("getOrCreateChat callable", () => {
         const chatWrite = env.writes.find(w => w.path.startsWith("chats/"));
         expect(chatWrite.value).toEqual(expect.objectContaining({
             id: "mock-key-1",
-            post_title: "Llaves perdidas",
+            postTitle: "Llaves perdidas",
             postImageUrl: "https://storage.com/post-1.jpg",
             post_id: "post-1",
             post_owner_id: "user-owner",
@@ -116,7 +116,7 @@ describe("getOrCreateChat callable", () => {
             op: "set",
             path: "chats/mock-key-1",
             value: expect.objectContaining({
-                post_title: "Título sugerido",
+                postTitle: "Título sugerido",
                 postImageUrl: null,
                 usersInfo: {
                     "user-buyer": {

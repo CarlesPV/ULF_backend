@@ -4,7 +4,7 @@ import { admin } from "../shared/firebase";
 import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { notifyMultipleUsersOfMatch } from "../shared/notifications";
-import { getHaversineDistance } from "../shared/utils";
+import { getHaversineDistance, isPointInPolygon } from "../shared/utils";
 
 // Cache para minimizar lecturas a DB en triggers de alta frecuencia
 const centersCache: Map<string, Center> = new Map();
@@ -25,9 +25,12 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
     try {
         await validatePostLocation(post);
     } catch (error: any) {
-        console.warn(`Post ${event.params.postId} rechazado por ubicación inválida. Eliminando...`);
-        await snapshot.ref.remove();
-        throw error;
+        console.warn(`Post ${event.params.postId} rechazado por ubicación inválida.`);
+        await snapshot.ref.update({ 
+            status: "rejected", 
+            rejection_reason: error.message || "out_of_bounds" 
+        });
+        return null;
     }
 
     const tasks: Promise<any>[] = [];
@@ -85,10 +88,10 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
 
     // 2. Sincronizar cambios de título o imagen con los chats abiertos para este post
     const titleChanged = before?.title !== after?.title;
-    const imageChanged = before?.imageUrl !== after?.imageUrl;
+    const imageChanged = (before?.imageUrl !== after?.imageUrl) || (before?.postImageUrl !== after?.postImageUrl);
 
     if (titleChanged || imageChanged) {
-        tasks.push(syncPostMetadataToChats(event.params.postId, after.title, after.imageUrl));
+        tasks.push(syncPostMetadataToChats(event.params.postId, after.title, after.postImageUrl || after.imageUrl));
     }
 
     await Promise.all(tasks);
@@ -107,8 +110,8 @@ async function syncPostMetadataToChats(postId: string, title: string, imageUrl: 
     const updates: { [key: string]: any } = {};
     chatsQuery.forEach((chatSnapshot) => {
         const chatId = chatSnapshot.key;
-        updates[`chats/${chatId}/post_title`] = title || "Sin título";
-        updates[`chats/${chatId}/post_image_url`] = imageUrl || "";
+        updates[`chats/${chatId}/postTitle`] = title || "Sin título";
+        updates[`chats/${chatId}/postImageUrl`] = imageUrl || null;
     });
 
     return admin.database().ref().update(updates);
@@ -292,18 +295,4 @@ async function validatePostLocation(post: any): Promise<void> {
     }
 }
 
-/**
- * Algoritmo de Ray Casting para verificar si un punto está dentro de un polígono.
- * Optimizado para geocoordenadas.
- */
-function isPointInPolygon(point: { lat: number; lng: number }, polygon: { lat: number; lng: number }[]): boolean {
-    let isInside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = polygon[i].lat, yi = polygon[i].lng;
-        const xj = polygon[j].lat, yj = polygon[j].lng;
-        const intersect = ((yi > point.lng) !== (yj > point.lng)) &&
-            (point.lat < (xj - xi) * (point.lng - yi) / (yj - yi) + xi);
-        if (intersect) isInside = !isInside;
-    }
-    return isInside;
-}
+

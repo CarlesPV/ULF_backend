@@ -378,10 +378,10 @@ describe("post triggers", () => {
     // Debe haber una operación de 'update' en la raíz con los chats actualizados
     const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
     expect(updateOp.value).toEqual({
-      "chats/chat-1/post_title": "Nuevo título",
-      "chats/chat-1/post_image_url": "new.jpg",
-      "chats/chat-2/post_title": "Nuevo título",
-      "chats/chat-2/post_image_url": "new.jpg"
+      "chats/chat-1/postTitle": "Nuevo título",
+      "chats/chat-1/postImageUrl": "new.jpg",
+      "chats/chat-2/postTitle": "Nuevo título",
+      "chats/chat-2/postImageUrl": "new.jpg"
     });
   });
 
@@ -420,38 +420,46 @@ describe("post triggers", () => {
       const env = setupCallableTestEnv({
         onceByPath: { "centers/uab": validCenter }
       });
+      const update = jest.fn(async () => undefined);
       const remove = jest.fn(async () => undefined);
       const { onPostCreated } = require("../../lib/posts/postTriggers");
 
       // Coordenadas en Barcelona Centro (~20km de UAB)
-      await expect(onPostCreated(createdEvent({
+      await onPostCreated(createdEvent({
         center_id: "uab",
         status: "active",
         is_deleted: false,
         coords: { lat: 41.385063, lng: 2.173403 }
-      }, "post-fail", jest.fn(), remove))).rejects.toThrow();
+      }, "post-fail", update, remove));
 
       expect(env.writes).not.toContainEqual(expect.objectContaining({
         path: "active_posts/uab/post-fail"
       }));
-      expect(remove).toHaveBeenCalled();
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        status: "rejected"
+      }));
+      expect(remove).not.toHaveBeenCalled();
     });
 
     test("onPostCreated deletes posts outside the center bounding box", async () => {
       const env = setupCallableTestEnv({
         onceByPath: { "centers/uab": validCenter }
       });
+      const update = jest.fn(async () => undefined);
       const remove = jest.fn(async () => undefined);
       const { onPostCreated } = require("../../lib/posts/postTriggers");
 
-      await expect(onPostCreated(createdEvent({
+      await onPostCreated(createdEvent({
         center_id: "uab",
         status: "active",
         is_deleted: false,
         coords: { lat: 41.0, lng: 2.0 }
-      }, "post-fail-box", jest.fn(), remove))).rejects.toThrow();
+      }, "post-fail-box", update, remove));
 
-      expect(remove).toHaveBeenCalled();
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        status: "rejected"
+      }));
+      expect(remove).not.toHaveBeenCalled();
     });
 
     test("onPostCreated accepts posts within polygon boundaries", async () => {
@@ -491,17 +499,21 @@ describe("post triggers", () => {
         ]
       };
       const env = setupPostTriggerEnv({ onceByPath: { "centers/uab": polygonCenter } });
+      const update = jest.fn(async () => undefined);
       const remove = jest.fn(async () => undefined);
       const { onPostCreated } = require("../../lib/posts/postTriggers");
 
-      await expect(onPostCreated(createdEvent({
+      await onPostCreated(createdEvent({
         center_id: "uab",
         status: "active",
         is_deleted: false,
         coords: { lat: 41.52, lng: 2.10 } // Fuera por el norte
-      }, "post-fail-poly", jest.fn(), remove))).rejects.toThrow();
+      }, "post-fail-poly", update, remove));
 
-      expect(remove).toHaveBeenCalled();
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        status: "rejected"
+      }));
+      expect(remove).not.toHaveBeenCalled();
     });
   });
 });

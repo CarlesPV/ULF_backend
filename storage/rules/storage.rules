@@ -9,7 +9,7 @@ service firebase.storage {
 
     // Objetos perdidos / encontrados
     match /posts/{postId}/{imageName} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       // Permitimos subida a cualquier usuario autenticado (se procesará a WebP luego)
       allow write: if isAuthenticated()
                    && request.resource.size < 5 * 1024 * 1024
@@ -18,7 +18,7 @@ service firebase.storage {
 
     // Fotos de perfil
     match /users/{userId}/profile_image {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAuthenticated()
                    && request.auth.uid == userId
                    && request.resource.size < 5 * 1024 * 1024
@@ -27,7 +27,7 @@ service firebase.storage {
 
     // Versión optimizada (WebP)
     match /users/{userId}/profile_image.webp {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if false; // Solo accesible vía Admin SDK (Cloud Functions)
     }
   }

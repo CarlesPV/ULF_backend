@@ -94,7 +94,7 @@ describe("checkPotentialMatches", () => {
           description: undefined,
           score: 2,
           photo_path: "posts/lost-1.jpg",
-          photo_url: ""
+          postImageUrl: ""
         }
       ]
     });
@@ -195,7 +195,7 @@ describe("checkPotentialMatches", () => {
           description: "Sin detalles",
           score: 1,
           photo_path: "posts/lost-1.jpg",
-          photo_url: ""
+          postImageUrl: ""
         }
       ]
     });
@@ -238,7 +238,7 @@ describe("checkPotentialMatches", () => {
           description: "Llavero rojo intenso",
           score: 1.5,
           photo_path: "posts/lost-1.jpg",
-          photo_url: ""
+          postImageUrl: ""
         }
       ]
     });
@@ -286,7 +286,7 @@ describe("checkPotentialMatches", () => {
       description: undefined,
       score: 2.5,
       photo_path: "posts/lost-6.jpg",
-      photo_url: ""
+      postImageUrl: ""
     });
   });
 });
