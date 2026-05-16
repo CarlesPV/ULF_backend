@@ -64,7 +64,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
                 description: post.description,
                 score: score,
                 photo_path: post.photo_path,
-                photo_url: post.photo_url || ""
+                postImageUrl: post.postImageUrl || post.imageUrl || post.photo_url || ""
             });
         }
     }

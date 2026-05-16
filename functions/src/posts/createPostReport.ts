@@ -2,7 +2,7 @@ import * as functions from "firebase-functions";
 import * as geofire from "geofire-common";
 import { admin } from "../shared/firebase";
 import { PostReportPayload, Center } from "../shared/types";
-import { getHaversineDistance } from "../shared/utils";
+import { getHaversineDistance, isPointInPolygon } from "../shared/utils";
 
 // Cache en memoria para minimizar lecturas a la base de datos
 const centersCache: Map<string, Center> = new Map();
@@ -54,11 +54,23 @@ export const createPostReport = functions.https.onCall(async (request) => {
         centersCache.set(center_id, centerData);
     }
 
-    const { bounds, location, radius_meters } = centerData;
+    const { bounds, location, radius_meters, boundaries } = centerData;
 
     if (!location || location.lat === undefined || location.lng === undefined) {
         console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada.`);
         throw new functions.https.HttpsError("internal", "Error de configuración del centro (ubicación faltante).");
+    }
+
+    // 0. Validación por Polígono (Prioritaria si existe)
+    if (boundaries && boundaries.length > 0) {
+        if (!isPointInPolygon({ lat, lng }, boundaries)) {
+            throw new functions.https.HttpsError(
+                "out-of-range", 
+                "La ubicación está fuera de los límites (boundaries) del centro."
+            );
+        }
+    } else {
+        // Fallback a validaciones antiguas si no hay polígono definido
     }
 
     // Validación por Bounding Box (rápida)
