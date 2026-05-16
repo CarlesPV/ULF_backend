@@ -8,7 +8,7 @@ describe("createPostReport", () => {
             lat: 41.50,
             lng: 2.10
         },
-        radius_meters: 1500,
+        radius_meters: 1100,
         bounds: {
             latMin: 41.48,
             latMax: 41.52,
@@ -95,7 +95,7 @@ describe("createPostReport", () => {
 
     test("should throw out-of-range error if coordinates are outside center bounds", async () => {
         const { createPostReport } = require("../../lib/posts/createPostReport");
-        
+
         const request = {
             auth: { uid: "user1", token: { email_verified: true } },
             data: {
@@ -167,7 +167,7 @@ describe("createPostReport", () => {
 
     test("should succeed if coordinates are inside center bounds", async () => {
         const { createPostReport } = require("../../lib/posts/createPostReport");
-        
+
         const request = {
             auth: { uid: "user1", token: { email_verified: true } },
             data: {
