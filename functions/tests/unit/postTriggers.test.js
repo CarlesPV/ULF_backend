@@ -100,13 +100,13 @@ describe("post triggers", () => {
     const env = setupPostTriggerEnv();
     const { onPostCreated } = require("../../lib/posts/postTriggers");
 
-    await expect(onPostCreated(createdEvent({
+    await onPostCreated(createdEvent({
       center_id: "uab",
       coords: validCoords,
       status: "matched",
       is_deleted: false,
       created_at: 123
-    }))).rejects.toThrow();
+    }));
 
     expect(env.writes).toEqual([]);
     expect(env.translateText).not.toHaveBeenCalled();
