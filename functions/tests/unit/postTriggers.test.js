@@ -113,7 +113,7 @@ describe("post triggers", () => {
   });
 
   test("onPostCreated keeps indexing when translation fails", async () => {
-    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => { });
     const env = setupPostTriggerEnv({ translateRejects: new Error("translate failed") });
     const update = jest.fn(async () => undefined);
     const { onPostCreated } = require("../../lib/posts/postTriggers");
@@ -253,7 +253,7 @@ describe("post triggers", () => {
   });
 
   test("onPostCreated keeps indexing when automatic notification lookup fails", async () => {
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "error").mockImplementation(() => { });
     const notifyMultipleUsersOfMatch = jest.fn().mockRejectedValue(new Error("notify failed"));
     const env = setupPostTriggerEnv({
       translateResult: "red keychain",
@@ -392,7 +392,7 @@ describe("post triggers", () => {
         lat: 41.5008587,
         lng: 2.1042399
       },
-      radius_meters: 1500,
+      radius_meters: 1100,
       bounds: { latMin: 41.48, latMax: 41.52, lngMin: 2.08, lngMax: 2.13 }
     };
 
