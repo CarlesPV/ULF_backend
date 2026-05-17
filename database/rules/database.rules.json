@@ -47,7 +47,7 @@
                     ".validate": "newData.isString() && newData.val().matches(/^(lost|found)$/)"
                 },
                 "status": {
-                    ".validate": "newData.isString() && newData.val().matches(/^(active|matched|returned)$/)"
+                    ".validate": "newData.isString() && newData.val().matches(/^(active|matched|returned|rejected)$/)"
                 }
             }
         },
@@ -55,7 +55,9 @@
             ".read": "auth != null",
             "$center_id": {
                 ".read": "auth != null",
-                ".indexOn": [".value"]
+                ".indexOn": [
+                    ".value"
+                ]
             }
         },
         "post_views": {

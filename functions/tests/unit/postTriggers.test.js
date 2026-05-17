@@ -441,25 +441,37 @@ describe("post triggers", () => {
       expect(remove).not.toHaveBeenCalled();
     });
 
-    test("onPostCreated deletes posts outside the center bounding box", async () => {
+    test("onPostCreated accepts posts outside the center bounding box but within the Haversine radius", async () => {
+      const centerWithTightBounds = {
+        ...validCenter,
+        bounds: {
+          latMin: 41.50, // Caja muy restringida en el sur
+          latMax: 41.52,
+          lngMin: 2.08,
+          lngMax: 2.13
+        }
+      };
       const env = setupCallableTestEnv({
-        onceByPath: { "centers/uab": validCenter }
+        onceByPath: { "centers/uab": centerWithTightBounds }
       });
       const update = jest.fn(async () => undefined);
       const remove = jest.fn(async () => undefined);
       const { onPostCreated } = require("../../lib/posts/postTriggers");
 
+      // lat: 41.495 es exterior al latMin (41.50), pero está a ~650m del centro (41.5008587), dentro del radio de 1100m
       await onPostCreated(createdEvent({
         center_id: "uab",
         status: "active",
         is_deleted: false,
-        coords: { lat: 41.0, lng: 2.0 }
-      }, "post-fail-box", update, remove));
+        created_at: 123,
+        coords: { lat: 41.495, lng: 2.1042399 }
+      }, "post-success-outside-box", update, remove));
 
-      expect(update).toHaveBeenCalledWith(expect.objectContaining({
-        status: "rejected"
+      expect(env.writes).toContainEqual(expect.objectContaining({
+        op: "set",
+        path: "active_posts/uab/post-success-outside-box"
       }));
-      expect(remove).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
     });
 
     test("onPostCreated accepts posts within polygon boundaries", async () => {

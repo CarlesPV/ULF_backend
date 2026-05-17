@@ -55,7 +55,7 @@ export const createPostReport = functions.https.onCall(async (request) => {
         centersCache.set(center_id, centerData);
     }
 
-    const { bounds, location, radius_meters, boundaries } = centerData;
+    const { location, radius_meters, boundaries } = centerData;
 
     if (!location || location.lat === undefined || location.lng === undefined) {
         console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada.`);
@@ -65,24 +65,6 @@ export const createPostReport = functions.https.onCall(async (request) => {
     // 0. Validación por Polígono (Prioritaria si existe)
     if (boundaries && boundaries.length > 0) {
         if (!isPointInPolygon({ lat, lng }, boundaries)) {
-            throw new functions.https.HttpsError(
-                "out-of-range", 
-                I18N_STRINGS.errors.out_of_bounds_location
-            );
-        }
-    } else {
-        // Fallback a validaciones antiguas si no hay polígono definido
-    }
-
-    // Validación por Bounding Box (rápida)
-    if (bounds) {
-        const isOutOfRange = 
-            lat < bounds.latMin || 
-            lat > bounds.latMax || 
-            lng < bounds.lngMin || 
-            lng > bounds.lngMax;
-
-        if (isOutOfRange) {
             throw new functions.https.HttpsError(
                 "out-of-range", 
                 I18N_STRINGS.errors.out_of_bounds_location
