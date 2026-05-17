@@ -265,7 +265,7 @@ async function validatePostLocation(post: any): Promise<void> {
         centersCache.set(center_id, centerData);
     }
 
-    const { bounds, location, radius_meters, boundaries } = centerData;
+    const { location, radius_meters, boundaries } = centerData;
 
     // 1. Validación por Polígono (Prioritaria si existe)
     if (boundaries && boundaries.length > 0) {
@@ -278,14 +278,6 @@ async function validatePostLocation(post: any): Promise<void> {
     if (!location || location.lat === undefined || location.lng === undefined) {
         console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada en DB.`);
         throw new HttpsError("internal", I18N_STRINGS.errors.center_config_error);
-    }
-
-    // 2. Validación Bounding Box (Fallback)
-    if (bounds) {
-        if (coords.lat < bounds.latMin || coords.lat > bounds.latMax ||
-            coords.lng < bounds.lngMin || coords.lng > bounds.lngMax) {
-            throw new HttpsError("out-of-range", I18N_STRINGS.errors.out_of_bounds_location);
-        }
     }
 
     // 3. Validación Haversine (Fallback) con 5% de margen de tolerancia
