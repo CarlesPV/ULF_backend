@@ -142,7 +142,7 @@ Para verificar localmente:
 
 ```bash
 cd functions
-npm test matchNotifications.test.js
+npm run test -- tests/unit/matchNotifications.test.js
 ```
 
 ## Archivos Modificados
@@ -153,7 +153,7 @@ npm test matchNotifications.test.js
 | `matcher/checkPotentialMatches.ts` | 📝 Integración de notificaciones |
 | `posts/postTriggers.ts` | 📝 Nuevo trigger de búsqueda automática |
 | `shared/i18n.ts` | 📝 Nuevas claves de traducción |
-| `test/matchNotifications.test.js` | ✨ Nuevo archivo |
+| `tests/unit/matchNotifications.test.js` | ✨ Nuevo archivo |
 | `docs/match-notifications.md` | ✨ Nuevo documento |
 | `docs/implementation-status.md` | 📝 Actualizado estado |
 

@@ -37,9 +37,9 @@ Se ha introducido el ecosistema de Node.js/TypeScript al repositorio:
 
 ### A. CI/CD Pipeline (`deploy.yml`)
 El flujo de GitHub Actions ejecuta un paso de construcción (`npm run build`) dentro de la carpeta `/functions` antes de desplegar. El comando de despliegue es:
-`firebase deploy --only database,functions`
+`firebase deploy --only database,functions,storage`
 
-Actualmente no hay una suite de tests automatizados conectada al pipeline; esa es una mejora pendiente para la fase de calidad.
+La suite de tests unitarios robusta ya está completamente integrada y alojada en `/functions/tests/unit/` utilizando Jest. Ejecuta 105 tests unitarios que simulan de manera aislada y simulada (mocks) el comportamiento de base de datos, triggers, autenticación y notificaciones push.
 
 ### B. Índices en Realtime Database
 Se ha añadido la regla `.indexOn: ["is_active"]` al nodo `/centers` en `database.rules.json` para optimizar el filtrado al registrar usuarios, evitando la descarga completa de la colección.

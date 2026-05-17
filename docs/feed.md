@@ -3,7 +3,7 @@
 ## 1. Descripción General
 El feed filtrado (RF08) permite al cliente Flutter consultar publicaciones por universidad, tipo (`lost` / `found`), categoría y palabras clave. La lógica de filtrado vive en una **Callable Cloud Function** (`getFilteredFeed`) para evitar descargar la colección `/posts` completa al móvil.
 
-El buscador es **multiidioma**: el término introducido por el usuario se traduce al idioma común (`en`) y se compara contra el campo `translated_description` que ya genera el trigger `onPostCreated`.
+El buscador es **multiidioma**: el término introducido por el usuario se traduce al idioma común (`es`) y se compara contra el campo `translated_description` que ya genera el trigger `onPostCreated`.
 
 ## 2. Estrategia de Escalabilidad
 

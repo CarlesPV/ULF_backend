@@ -2,9 +2,31 @@ import * as functions from "firebase-functions";
 import { admin, db } from "../shared/firebase";
 import { I18N_STRINGS } from "../shared/i18n";
 
-/*
-    Función segura para el registro de usuarios en universidades
-*/
+/**
+ * Registro seguro de usuarios en centros universitarios autorizados.
+ * 
+ * Esta función de Cloud Call realiza las siguientes validaciones y acciones:
+ * 1. Valida los datos recibidos (correo, contraseña y nombre).
+ * 2. Extrae el dominio del correo y verifica que corresponda a un centro educativo autorizado y activo.
+ * 3. Crea el registro de usuario en Firebase Authentication.
+ * 4. Inicializa el perfil de usuario en Realtime Database con el rol restrictivo 'student' por motivos de seguridad.
+ * 5. Si ocurre un fallo al escribir en la base de datos, ejecuta un mecanismo de rollback eliminando el usuario creado en Firebase Auth.
+ * 
+ * @param request - Objeto de petición que contiene los datos del usuario:
+ *   - email: Correo institucional del usuario.
+ *   - password: Contraseña para la nueva cuenta.
+ *   - name: Nombre completo del usuario.
+ *   - language: (Opcional) Idioma de preferencia del usuario ("es", "ca", "en"). Por defecto "es".
+ * 
+ * @returns Un objeto que indica el éxito de la operación y el identificador único (uid) del usuario creado.
+ * 
+ * @throws {HttpsError}
+ *   - 'invalid-argument': Si faltan campos obligatorios o el formato de correo es incorrecto.
+ *   - 'permission-denied': Si el dominio de correo no pertenece a ningún centro universitario autorizado.
+ *   - 'unavailable': Si el centro asociado al dominio se encuentra inactivo.
+ *   - 'already-exists': Si el correo electrónico ya está registrado en el sistema.
+ *   - 'internal': Si ocurre algún error inesperado en el servidor durante el proceso.
+ */
 export const secureUniversityRegistration = functions.https.onCall(async (request) => {
     const { email, password, name } = request.data;
 
@@ -12,14 +34,14 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
-    // 1. Validar dominio
+    // Validar el formato del dominio del correo electrónico institucional
     const domain = email.split("@")[1];
     if (!domain) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
     }
     const formattedDomain = domain.replace(/\./g, "_");
 
-    // 2. Comprobar existencia y estado del centro
+    // Comprobar la existencia del centro y que su estado esté activo
     const centersRef = db.ref("centers");
     const snapshot = await centersRef.orderByChild(`email_domains/${formattedDomain}`).equalTo(true).once("value");
 
@@ -37,7 +59,7 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
     let uid: string | null = null;
 
     try {
-        // 3. Crear usuario en Auth
+        // Crear el usuario en Firebase Authentication
         const userRecord = await admin.auth().createUser({
             email: email,
             password: password,
@@ -45,17 +67,17 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
         });
         uid = userRecord.uid;
 
-        // 4. Preparar el perfil de usuario.
-        // SEGURIDAD: Forzamos el rol 'student' independientemente de lo que envíe el cliente.
+        // Preparar el perfil de usuario que se almacenará en Realtime Database.
+        // SEGURIDAD: Se fuerza el rol 'student' por defecto para evitar escalación de privilegios en el auto-registro.
         const newUserProfile = {
             id: uid,
             center_id: centerId,
-            role: "student", // Único rol permitido en auto-registro
+            role: "student",
             email: email,
             name: name,
             photo_path: "",
             settings: {
-                language: request.data.language || "es", // Default to ES if not provided
+                language: request.data.language || "es", // Idioma predeterminado en castellano si no se suministra
                 push_notifications: true,
                 dark_mode: false
             },
@@ -64,13 +86,14 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
             is_deleted: false
         };
 
-        // 5. Intentar escribir en la base de datos
+        // Escribir el perfil del usuario en Realtime Database
         await db.ref(`users/${uid}`).set(newUserProfile);
 
         return { success: true, uid: uid };
 
     } catch (error: any) {
-        // 6. MECANISMO DE ROLLBACK
+        // MECANISMO DE ROLLBACK: Si la inserción en la base de datos falla, se elimina el usuario de Firebase Authentication
+        // para garantizar la consistencia atómica entre Auth y Realtime Database.
         if (uid) {
             console.warn(`[ROLLBACK] Falló la escritura en RTDB para el UID ${uid}. Eliminando de Auth...`);
             try {
@@ -81,7 +104,7 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
             }
         }
 
-        // Determinar si el error fue por email duplicado o fallo de servidor
+        // Determinar si el error fue por correo duplicado o un fallo general
         if (error.code === "auth/email-already-exists") {
             throw new functions.https.HttpsError("already-exists", I18N_STRINGS.errors.email_already_exists);
         }

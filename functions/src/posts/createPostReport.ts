@@ -11,29 +11,58 @@ const LOCATION_TOLERANCE_METERS = 50;
 // Cache en memoria para minimizar lecturas a la base de datos
 const centersCache: Map<string, Center> = new Map();
 
-/*
-    Función para crear un nuevo reporte de objeto perdido o encontrado.
-*/
+/**
+ * Crea e inicializa una nueva publicación (reporte) de objeto perdido o encontrado en el sistema.
+ * 
+ * Esta función de Cloud Call implementa un enfoque de validación defensivo (Zero Trust) y geovallado (Geofencing):
+ * 1. Comprueba que el usuario de la llamada cuente con sesión activa y correo institucional verificado.
+ * 2. Realiza validaciones estrictas sobre campos mandatorios, formato e integridad de coordenadas y categorías permitidas.
+ * 3. Recupera y cachea localmente en memoria (`centersCache`) la información del centro universitario para optimizar las cuotas de lectura de base de datos.
+ * 4. Geovallado por Radio Haversine: Calcula la distancia exacta del post a la ubicación central del campus.
+ *    Aplica un margen de tolerancia de 50 metros (`LOCATION_TOLERANCE_METERS`) para mitigar las limitaciones matemáticas de precisión 
+ *    del punto flotante y las pequeñas desviaciones inherentes a los sensores GPS de los terminales móviles.
+ * 5. Si el objeto supera el radio geográfico permitido, deniega la inserción lanzando un error `'out-of-range'`.
+ * 6. Genera de forma automatizada un geohash espacial para agilizar consultas geográficas.
+ * 7. Registra y escribe atómicamente el documento en la ruta `/posts/{postId}`.
+ * 
+ * @param request - Objeto de petición que implementa la interfaz `PostReportPayload`:
+ *   - center_id: Identificador único del centro educativo en el que se extravió/halló el objeto.
+ *   - type: Tipo de publicación ("lost" o "found").
+ *   - title: Título conciso del reporte.
+ *   - description: (Opcional) Descripción detallada del objeto.
+ *   - category: Categoría del objeto (debe pertenecer a `allowedCategories`).
+ *   - lat: Latitud geográfica exacta de la ubicación del objeto.
+ *   - lng: Longitud geográfica exacta de la ubicación del objeto.
+ *   - photo_path: (Opcional) Ruta de almacenamiento del archivo de imagen asociado.
+ * 
+ * @returns Un objeto que indica el éxito del registro y el identificador único (`post_id`) generado.
+ * 
+ * @throws {HttpsError}
+ *   - 'permission-denied': Si el correo del emisor no está verificado.
+ *   - 'invalid-argument': Si faltan campos estructurales obligatorios, el formato de coordenadas es inválido o la categoría no está permitida.
+ *   - 'not-found': Si el centro educativo especificado no está registrado en el sistema.
+ *   - 'out-of-range': Si la posición geográfica del reporte se ubica fuera del radio autorizado del campus.
+ *   - 'internal': Si el centro carece de coordenadas de configuración o en caso de error de escritura en Realtime Database.
+ */
 export const createPostReport = functions.https.onCall(async (request) => {
-    // 1. Validación de Autenticación usando el objeto 'request'
+    // Validar autenticación de usuario y estado de verificación del correo electrónico
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
     }
 
-    // 2. Casteo de los datos a nuestra interfaz definida para mayor seguridad y claridad
     const data = request.data as PostReportPayload;
     const uid = request.auth.uid;
 
     const { center_id, type, title, description, category, lat, lng, photo_path } = data;
 
-    // 3. Validación de datos mínimos requeridos (Zero Trust)
     const allowedCategories = ["accessories", "clothes", "devices", "wallets", "keys", "bags", "study", "others"];
     
+    // Validación Zero Trust de campos mandatorios
     if (!center_id || !type || !category || !title) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
-    // Validación explícita de coordenadas para evitar ceros falsos o nulos
+    // Validación exhaustiva de las coordenadas geográficas enviadas
     if (lat === null || lat === undefined || lng === null || lng === undefined) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.coords_required);
     }
@@ -46,7 +75,7 @@ export const createPostReport = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.category_not_allowed);
     }
 
-    // 3.5 Validación de límites geográficos (Bounding Box y Radio Haversine)
+    // Comprobar la existencia del centro y recuperar su geolocalización (con soporte de caché local)
     let centerData = centersCache.get(center_id);
 
     if (!centerData) {
@@ -65,20 +94,9 @@ export const createPostReport = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("internal", I18N_STRINGS.errors.center_config_error);
     }
 
-    // DESACTIVADO POR ROADMAP: Los polígonos tienen aristas matemáticas exactas que no perdonan errores
-    // de punto flotante o GPS. Usamos únicamente la distancia Haversine + tolerancia de 50m.
-    /*
-    if (boundaries && boundaries.length > 0) {
-        if (!isPointInPolygon({ lat, lng }, boundaries)) {
-            throw new functions.https.HttpsError(
-                "out-of-range", 
-                I18N_STRINGS.errors.out_of_bounds_location
-            );
-        }
-    }
-    */
-
-    // Validación por Radio Haversine con tolerancia de 50 metros para compensar punto flotante entre Flutter y Node.js
+    // NOTA DE DISEÑO: Se desestima el geovallado por límites de polígono exactos debido a que
+    // sus aristas rígidas no toleran las imprecisiones de punto flotante de los terminales
+    // y pequeños retardos del sensor GPS. Se prioriza el radio Haversine + tolerancia de 50 metros.
     const distance = getHaversineDistance(lat, lng, location.lat, location.lng);
     const maxAllowedDistance = radius_meters + LOCATION_TOLERANCE_METERS;
     
@@ -91,7 +109,7 @@ export const createPostReport = functions.https.onCall(async (request) => {
         );
     }
 
-    // 4. Generar Geohash para futuras consultas espaciales
+    // Generar codificación Geohash espacial para optimizar consultas espaciales futuras en el Feed
     const geohash = geofire.geohashForLocation([lat, lng]);
 
     const postsRef = admin.database().ref("posts");
@@ -102,7 +120,7 @@ export const createPostReport = functions.https.onCall(async (request) => {
         id: postId,
         user_id: uid,
         center_id: center_id,
-        type: type, // 'lost' o 'found'
+        type: type,
         title: title,
         description: description || "",
         category: category,
