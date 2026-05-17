@@ -3,5 +3,5 @@ module.exports = {
   resetMocks: false,
   restoreMocks: true,
   testEnvironment: "node",
-  testMatch: ["<rootDir>/test/**/*.test.js"]
+  testMatch: ["<rootDir>/tests/unit/**/*.test.js"]
 };

@@ -1,17 +1,37 @@
 import { onValueCreated, onValueUpdated, onValueDeleted } from "firebase-functions/v2/database";
+import { HttpsError } from "firebase-functions/v2/https";
 import { admin } from "../shared/firebase";
+import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
+import { notifyMultipleUsersOfMatch } from "../shared/notifications";
+import { getHaversineDistance, isPointInPolygon } from "../shared/utils";
+
+// Cache para minimizar lecturas a DB en triggers de alta frecuencia
+const centersCache: Map<string, Center> = new Map();
 
 /*
     TRIGGER: Al crear un post:
       - Lo añade al índice /active_posts/{center_id}/{post_id} si está activo.
       - Traduce su descripción a un idioma común para búsquedas multiidioma.
-    Ambas tareas son independientes: si la traducción falla, el post sigue indexado.
+      - Busca matches automáticamente y notifica a usuarios relevantes.
+    Ambas tareas son independientes: si la traducción o notificación fallan, el post sigue indexado.
 */
 export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any) => {
     const snapshot = event.data;
     const post = snapshot.val();
     if (!post?.center_id) return null;
+
+    // 0. Validación de Integridad Geográfica (Zero Trust)
+    try {
+        await validatePostLocation(post);
+    } catch (error: any) {
+        console.warn(`Post ${event.params.postId} rechazado por ubicación inválida.`);
+        await snapshot.ref.update({ 
+            status: "rejected", 
+            rejection_reason: error.message || "out_of_bounds" 
+        });
+        return null;
+    }
 
     const tasks: Promise<any>[] = [];
 
@@ -35,6 +55,16 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
         );
     }
 
+    // Añadir la búsqueda de matches a las tareas que deben completarse antes de cerrar la función
+    if (post.status === "active" && post.is_deleted === false) {
+        tasks.push(
+            notifyMatchesForNewPost(event.params.postId, post).catch((error: any) => {
+                console.error(`Error en búsqueda de matches para post ${event.params.postId}:`, error);
+            })
+        );
+    }
+
+    // Ahora Firebase esperará a que TODO (índice, traducción y matches) termine
     await Promise.all(tasks);
     return null;
 });
@@ -58,10 +88,10 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
 
     // 2. Sincronizar cambios de título o imagen con los chats abiertos para este post
     const titleChanged = before?.title !== after?.title;
-    const imageChanged = before?.imageUrl !== after?.imageUrl;
+    const imageChanged = (before?.imageUrl !== after?.imageUrl) || (before?.postImageUrl !== after?.postImageUrl);
 
     if (titleChanged || imageChanged) {
-        tasks.push(syncPostMetadataToChats(event.params.postId, after.title, after.imageUrl));
+        tasks.push(syncPostMetadataToChats(event.params.postId, after.title, after.postImageUrl || after.imageUrl));
     }
 
     await Promise.all(tasks);
@@ -80,8 +110,8 @@ async function syncPostMetadataToChats(postId: string, title: string, imageUrl: 
     const updates: { [key: string]: any } = {};
     chatsQuery.forEach((chatSnapshot) => {
         const chatId = chatSnapshot.key;
-        updates[`chats/${chatId}/post_title`] = title || "Sin título";
-        updates[`chats/${chatId}/post_image_url`] = imageUrl || "";
+        updates[`chats/${chatId}/postTitle`] = title || "Sin título";
+        updates[`chats/${chatId}/postImageUrl`] = imageUrl || null;
     });
 
     return admin.database().ref().update(updates);
@@ -99,3 +129,170 @@ export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any
         .ref(`active_posts/${before.center_id}/${event.params.postId}`)
         .remove();
 });
+
+/*
+    TRIGGER: Busca matches automáticamente cuando se crea un nuevo post activo
+    y notifica a los usuarios de los posts que coinciden.
+    
+    Flujo:
+    1. El nuevo post se crea y activa en Firebase
+    2. Se buscan posts activos del tipo opuesto en el mismo centro
+    3. Se calcula relevancia por categoría y similitud de descripción
+    4. Se filtra por umbral mínimo de relevancia (score >= 1.5)
+    5. Se notifica a usuarios de los top 5 posts con mejor score
+    
+    IMPORTANTE: Solo se ejecuta cuando el post YA ESTÁ GUARDADO en Firebase.
+    Esto evita notificaciones sobre posts que nunca se materializaron.
+*/
+async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<void> {
+    try {
+        // Validar que sea un post activo y tenga datos suficientes
+        if (newPost.status !== "active" || newPost.is_deleted || !newPost.center_id) {
+            return;
+        }
+
+        const targetType = newPost.type === "found" ? "lost" : "found";
+
+        // Obtener IDs de posts activos del tipo opuesto
+        const activePostsSnapshot = await admin
+            .database()
+            .ref(`active_posts/${newPost.center_id}`)
+            .once("value");
+
+        if (!activePostsSnapshot.exists()) return;
+
+        const activePostIds = Object.keys(activePostsSnapshot.val());
+
+        // Cargar posts activos concurrentemente
+        const postPromises = activePostIds.map((id) =>
+            admin.database().ref(`posts/${id}`).once("value")
+        );
+        const postSnapshots = await Promise.all(postPromises);
+
+        // Preparar términos de búsqueda del nuevo post
+        let searchTerms = `${newPost.color || ""} ${newPost.description || ""}`.trim();
+        let searchWords: string[] = [];
+
+        if (searchTerms !== "") {
+            try {
+                const translation = await translateText(searchTerms, DEFAULT_LANGUAGE);
+                searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
+            } catch (error) {
+                console.error(`Error traduciendo búsqueda para post ${postId}:`, error);
+            }
+        }
+
+        // Filtrar y calificar matches
+        const potentialMatches: { userId: string; score: number }[] = [];
+
+        for (const snap of postSnapshots) {
+            if (!snap.exists()) continue;
+            const existingPost = snap.val();
+
+            // Solo matches del tipo opuesto, misma categoría, activos y no borrados
+            if (existingPost.type === targetType && existingPost.category === newPost.category && 
+                existingPost.status === "active" && !existingPost.is_deleted && existingPost.user_id) {
+                
+                let score = 1.0;
+                const targetDesc = existingPost.translated_description || existingPost.description?.toLowerCase() || "";
+
+                // Scoring por palabras clave
+                if (searchWords.length > 0 && targetDesc) {
+                    let matchCount = 0;
+                    for (const word of searchWords) {
+                        if (targetDesc.includes(word)) matchCount++;
+                    }
+                    score += matchCount * 0.5;
+                }
+
+                // FIX CRÍTICO #3: Solo notificar si el score es lo suficientemente alto
+                // score >= 1.5 significa: categoría correcta + al menos 1 palabra coincide
+                if (score >= 1.5) {
+                    potentialMatches.push({
+                        userId: existingPost.user_id,
+                        score: score
+                    });
+                }
+            }
+        }
+
+        // Notificar a usuarios de los top 5 matches
+        const topMatches = potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5);
+
+        // FIX CRÍTICOS #1 y #2: 
+        // - Enviamos los datos del NUEVO post (postId, newPost.title) al dueño del post ANTIGUO
+        // - Esto asegura que cuando el usuario toca la notificación, ve el objeto que acaba de publicarse
+        for (const match of topMatches) {
+            try {
+                await notifyMultipleUsersOfMatch([match.userId], {
+                    id: postId,                    // ID del NUEVO post (el que acaba de crearse)
+                    title: newPost.title,          // Título del NUEVO post
+                    description: newPost.description,
+                    photo_url: newPost.photo_url || ""
+                }, match.score);
+            } catch (error) {
+                console.error(`Error notificando usuario ${match.userId} sobre nuevo post ${postId}:`, error);
+            }
+        }
+
+        if (topMatches.length > 0) {
+            console.log(`Post ${postId}: ${topMatches.length} matches encontrados y notificaciones enviadas (umbral >= 1.5)`);
+        }
+
+    } catch (error) {
+        console.error(`Error en búsqueda de matches para nuevo post ${postId}:`, error);
+        // No lanzar error para no interrumpir el flujo de creación del post
+    }
+}
+
+/**
+ * Valida si la ubicación de un post está dentro de los límites del centro.
+ */
+async function validatePostLocation(post: any): Promise<void> {
+    const { center_id, coords } = post;
+    if (!center_id || !coords?.lat || !coords?.lng) {
+        throw new HttpsError("invalid-argument", "Datos geográficos incompletos.");
+    }
+
+    let centerData = centersCache.get(center_id);
+    if (!centerData) {
+        const centerSnap = await admin.database().ref(`centers/${center_id}`).once("value");
+        if (!centerSnap.exists()) {
+            throw new HttpsError("not-found", "El centro asociado no existe.");
+        }
+        centerData = centerSnap.val() as Center;
+        centersCache.set(center_id, centerData);
+    }
+
+    const { bounds, location, radius_meters, boundaries } = centerData;
+
+    // 1. Validación por Polígono (Prioritaria si existe)
+    if (boundaries && boundaries.length > 0) {
+        if (!isPointInPolygon(coords, boundaries)) {
+            throw new HttpsError("out-of-range", "La ubicación está fuera de los límites (boundaries) del centro.");
+        }
+        return; // Si pasa el polígono, es suficiente
+    }
+
+    if (!location || location.lat === undefined || location.lng === undefined) {
+        console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada en DB.`);
+        throw new HttpsError("internal", "Configuración de centro inválida.");
+    }
+
+    // 2. Validación Bounding Box (Fallback)
+    if (bounds) {
+        if (coords.lat < bounds.latMin || coords.lat > bounds.latMax ||
+            coords.lng < bounds.lngMin || coords.lng > bounds.lngMax) {
+            throw new HttpsError("out-of-range", "La ubicación está fuera del área rectangular del centro.");
+        }
+    }
+
+    // 3. Validación Haversine (Fallback)
+    const distance = getHaversineDistance(coords.lat, coords.lng, location.lat, location.lng);
+    const buffer = 50; // 50m de cortesía
+    if (distance > (radius_meters + buffer)) {
+        throw new HttpsError("out-of-range", "La ubicación está demasiado lejos del centro.");
+    }
+}
+
+

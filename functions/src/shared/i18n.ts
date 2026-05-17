@@ -16,6 +16,16 @@ export const I18N_STRINGS = {
             es: "Alguien ha publicado un objeto que podría ser el tuyo.",
             en: "Someone posted an item that might be yours.",
             ca: "Algú ha publicat un objecte que podria ser el teu."
+        },
+        match_found_title: {
+            es: "¡Coincidencia encontrada!",
+            en: "Match found!",
+            ca: "¡Coincidència trobada!"
+        },
+        match_found_body: {
+            es: "Se encontró un objeto que podría coincidir con tu búsqueda.",
+            en: "An item was found that might match your search.",
+            ca: "Es va trobar un objecte que podria coincidir amb la teva recerca."
         }
     },
     // Error keys to be sent to frontend for translation

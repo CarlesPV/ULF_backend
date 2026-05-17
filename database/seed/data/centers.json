@@ -1,7 +1,7 @@
 [
     {
         "id": "uab",
-        "name": "Universidad Autónoma de Barcelona",
+        "name": "Universitat Autònoma de Barcelona",
         "email_domains": {
             "uab_cat": true
         },
@@ -11,6 +11,43 @@
             "lng_min": 2.093469875086038,
             "lng_max": 2.1150098522174234
         },
+        "bounds": {
+            "latMin": 41.48,
+            "latMax": 41.52,
+            "lngMin": 2.08,
+            "lngMax": 2.13
+        },
+        "location": {
+            "lat": 41.5008587,
+            "lng": 2.1042399
+        },
+        "radius_meters": 1100,
+        "boundaries": [
+            {
+                "lat": 41.5072,
+                "lng": 2.1100
+            },
+            {
+                "lat": 41.5030,
+                "lng": 2.1150
+            },
+            {
+                "lat": 41.4945,
+                "lng": 2.1100
+            },
+            {
+                "lat": 41.4945,
+                "lng": 2.0950
+            },
+            {
+                "lat": 41.5020,
+                "lng": 2.0935
+            },
+            {
+                "lat": 41.5072,
+                "lng": 2.0950
+            }
+        ],
         "is_active": true
     }
 ]

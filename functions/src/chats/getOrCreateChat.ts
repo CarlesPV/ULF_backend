@@ -43,8 +43,8 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
         center_id: centerId,
         post_id: postId,
         post_owner_id: postOwnerId,
-        post_title: post?.title || postTitle || "Sin título",
-        postImageUrl: post?.imageUrl || post?.image_url || post?.photoUrl || null, // Null explícito si no hay imagen
+        postTitle: post?.title || postTitle || "Sin título",
+        postImageUrl: post?.postImageUrl || post?.imageUrl || post?.image_url || post?.photoUrl || null, // Prioridad al nuevo campo postImageUrl
         members: {
             [uid]: true,
             [postOwnerId]: true

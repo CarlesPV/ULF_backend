@@ -15,8 +15,20 @@ describe("getOrCreateChat callable", () => {
         });
     });
 
+    test("rejects unauthenticated users", async () => {
+        const getOrCreateChat = require("../../lib/chats/getOrCreateChat").getOrCreateChat;
+
+        await expect(getOrCreateChat({
+            data: {
+                postId: "post-1",
+                postOwnerId: "user-owner",
+                centerId: "uab"
+            }
+        })).rejects.toMatchObject({ code: "unauthenticated" });
+    });
+
     test("creates a new chat with post metadata", async () => {
-        const getOrCreateChat = require("../lib/chats/getOrCreateChat").getOrCreateChat;
+        const getOrCreateChat = require("../../lib/chats/getOrCreateChat").getOrCreateChat;
         
         const data = {
             postId: "post-1",
@@ -31,12 +43,13 @@ describe("getOrCreateChat callable", () => {
 
         const result = await getOrCreateChat(request);
 
-        expect(result.chatId).toBeDefined();
+        expect(result).toEqual({ chatId: "mock-key-1" });
         
         // Verificar que se guardó el chat con la imagen y título del POST desnormalizado
         const chatWrite = env.writes.find(w => w.path.startsWith("chats/"));
         expect(chatWrite.value).toEqual(expect.objectContaining({
-            post_title: "Llaves perdidas",
+            id: "mock-key-1",
+            postTitle: "Llaves perdidas",
             postImageUrl: "https://storage.com/post-1.jpg",
             post_id: "post-1",
             post_owner_id: "user-owner",
@@ -46,6 +59,16 @@ describe("getOrCreateChat callable", () => {
             }),
             last_message: "SYSTEM_MSG_CHAT_STARTED"
         }));
+        expect(env.writes).toContainEqual({
+            op: "set",
+            path: "user_chats/user-buyer/mock-key-1",
+            value: 1700000000000
+        });
+        expect(env.writes).toContainEqual({
+            op: "set",
+            path: "user_chats/user-owner/mock-key-1",
+            value: 1700000000000
+        });
     });
 
     test("returns existing chat if it already exists for the same post and user", async () => {
@@ -62,7 +85,7 @@ describe("getOrCreateChat callable", () => {
             }
         });
 
-        const getOrCreateChat = require("../lib/chats/getOrCreateChat").getOrCreateChat;
+        const getOrCreateChat = require("../../lib/chats/getOrCreateChat").getOrCreateChat;
         const data = { postId: "post-1", postOwnerId: "user-owner", centerId: "uab" };
         const request = {
             data,
@@ -71,5 +94,41 @@ describe("getOrCreateChat callable", () => {
 
         const result = await getOrCreateChat(request);
         expect(result.chatId).toBe(existingChatId);
+        expect(env.writes).toEqual([]);
+    });
+
+    test("creates a new chat using fallback post and user metadata", async () => {
+        env = setupCallableTestEnv();
+        const getOrCreateChat = require("../../lib/chats/getOrCreateChat").getOrCreateChat;
+
+        const result = await getOrCreateChat({
+            data: {
+                postId: "post-missing",
+                postOwnerId: "user-owner",
+                centerId: "uab",
+                postTitle: "Título sugerido"
+            },
+            auth: { uid: "user-buyer", token: { email_verified: true } }
+        });
+
+        expect(result).toEqual({ chatId: "mock-key-1" });
+        expect(env.writes[0]).toEqual({
+            op: "set",
+            path: "chats/mock-key-1",
+            value: expect.objectContaining({
+                postTitle: "Título sugerido",
+                postImageUrl: null,
+                usersInfo: {
+                    "user-buyer": {
+                        displayName: "Usuario",
+                        photoUrl: null
+                    },
+                    "user-owner": {
+                        displayName: "Usuario",
+                        photoUrl: null
+                    }
+                }
+            })
+        });
     });
 });
