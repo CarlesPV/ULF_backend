@@ -245,7 +245,7 @@ try {
 
 ## Testing
 
-Ver: [matchNotifications.test.js](../test/matchNotifications.test.js)
+Ver: [matchNotifications.test.js](../functions/tests/unit/matchNotifications.test.js)
 
 **Casos Cubiertos:**
 

@@ -1,13 +1,18 @@
 /**
- * Calcula la distancia en metros entre dos puntos geográficos usando la fórmula de Haversine.
- * @param lat1 Latitud del punto 1
- * @param lon1 Longitud del punto 1
- * @param lat2 Latitud del punto 2
- * @param lon2 Longitud del punto 2
- * @returns Distancia en metros
+ * Calcula la distancia exacta en metros entre dos coordenadas geográficas utilizando la fórmula matemática de Haversine.
+ * 
+ * Este método calcula la distancia de círculo máximo sobre la superficie terrestre, ideal para validaciones geográficas
+ * y geovallados en campus universitarios.
+ * 
+ * @param lat1 - Latitud del primer punto en grados decimales.
+ * @param lon1 - Longitud del primer punto en grados decimales.
+ * @param lat2 - Latitud del segundo punto en grados decimales.
+ * @param lon2 - Longitud del segundo punto en grados decimales.
+ * 
+ * @returns La distancia lineal calculada en metros.
  */
 export function getHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371e3; // Radio de la Tierra en metros
+    const R = 6371e3; // Radio medio de la Tierra en metros (6371 km)
     const p1 = lat1 * Math.PI / 180;
     const p2 = lat2 * Math.PI / 180;
     const dp = (lat2 - lat1) * Math.PI / 180;
@@ -22,9 +27,15 @@ export function getHaversineDistance(lat1: number, lon1: number, lat2: number, l
 }
 
 /**
- * Algoritmo de Ray Casting para verificar si un punto está dentro de un polígono.
- * @param point Punto a verificar {lat, lng}
- * @param polygon Array de puntos que forman el polígono [{lat, lng}]
+ * Evalúa si una coordenada geográfica se ubica en el interior de una región poligonal cerrada usando el algoritmo de Ray Casting.
+ * 
+ * El algoritmo proyecta un rayo horizontal desde el punto de interés y cuenta cuántas aristas interseca.
+ * Un número impar de intersecciones determina que el punto se encuentra dentro de los límites del polígono.
+ * 
+ * @param point - Coordenada del punto a verificar `{ lat, lng }`.
+ * @param polygon - Arreglo ordenado de coordenadas que delimitan la frontera del polígono `[{ lat, lng }]`.
+ * 
+ * @returns `true` si el punto se encuentra en el interior del polígono delimitador; de lo contrario `false`.
  */
 export function isPointInPolygon(point: { lat: number; lng: number }, polygon: { lat: number; lng: number }[]): boolean {
     let isInside = false;

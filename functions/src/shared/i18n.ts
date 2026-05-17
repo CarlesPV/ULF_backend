@@ -1,5 +1,14 @@
 import { SupportedLanguage } from "./types";
 
+/**
+ * Diccionario centralizado de cadenas y códigos para internacionalización (i18n) en el Backend.
+ * 
+ * Contiene dos secciones principales organizadas para dar soporte a los 3 idiomas (es, en, ca):
+ * 1. `notifications`: Estructura con plantillas localizadas para títulos y cuerpos de notificaciones push.
+ * 2. `errors`: Códigos de error unificados y estandarizados que se envían al Frontend para ser traducidos
+ *    a nivel de interfaz de usuario. Esto permite separar las preocupaciones y mantener la flexibilidad del diseño sin romper
+ *    los diccionarios del cliente.
+ */
 export const I18N_STRINGS = {
     notifications: {
         new_message_title: {
@@ -28,7 +37,7 @@ export const I18N_STRINGS = {
             ca: "Es va trobar un objecte que podria coincidir amb la teva recerca."
         }
     },
-    // Error keys to be sent to frontend for translation
+    // Códigos de error estandarizados que se transmiten al cliente para traducción dinámica en la interfaz de usuario
     errors: {
         unauthorized: "error_unauthorized",
         unverified_email: "error_unverified_email",
@@ -51,7 +60,12 @@ export const I18N_STRINGS = {
 };
 
 /**
- * Gets a localized string for notifications.
+ * Obtiene y resuelve la cadena localizada para una notificación push en base al idioma preferido del destinatario.
+ * 
+ * @param key - Clave que identifica la plantilla de notificación dentro del diccionario `I18N_STRINGS.notifications`.
+ * @param lang - Código del idioma seleccionado por el usuario ("es", "en", "ca"). Por defecto se utiliza "en" (inglés).
+ * 
+ * @returns La cadena de texto traducida. Si el idioma no está disponible, realiza un fallback automático a inglés.
  */
 export function getNotificationString(
     key: keyof typeof I18N_STRINGS.notifications,

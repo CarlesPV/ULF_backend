@@ -5,11 +5,40 @@ import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { FeedFilterPayload } from "../shared/types";
 import { I18N_STRINGS } from "../shared/i18n";
 
-/*
-    Función para obtener el feed filtrado por universidad, tipo, categoría y palabras clave.
-    Usa el índice /active_posts/{center_id} para escanear solo posts activos,
-    evitando cargar el historial acumulado de posts resueltos o eliminados.
-*/
+/**
+ * Obtiene el listado filtrado de posts (objetos perdidos/encontrados) activos para un centro.
+ * 
+ * Esta función de Cloud Call realiza las siguientes operaciones optimizadas:
+ * 1. En primera instancia, valida que el solicitante esté autenticado y cuente con correo institucional verificado.
+ * 2. Consulta de manera eficiente el índice secundario `/active_posts/{center_id}` para obtener únicamente las claves
+ *    de publicaciones activas, previniendo la carga costosa e innecesaria de posts históricos resueltos o eliminados.
+ * 3. Recupera de forma concurrente el contenido de los posts desde la colección principal.
+ * 4. Soporte multiidioma (i18n): Si se proporciona un término de búsqueda (`search_term`), este se traduce al idioma común 
+ *    de referencia (ej. catalán/español/inglés) mediante `translateText` para asegurar la coincidencia semántica
+ *    sin importar el idioma en el que se redactó originalmente la publicación.
+ * 5. Filtra localmente en memoria según criterios de tipo (lost/found), categoría, y términos coincidentes en títulos,
+ *    descripciones (tanto originales como traducidas) y etiquetas de visión por computadora (`vision_labels`).
+ * 6. Ordena los resultados resultantes:
+ *    - Por distancia geográfica más cercana utilizando la fórmula de GeoFire si se especifican coordenadas de origen (`user_lat`, `user_lng`) y el criterio de ordenamiento es `'distance'`.
+ *    - Por fecha de creación descendente (comportamiento predeterminado) para dar prioridad a los reportes más recientes.
+ * 7. Limita el resultado a un número máximo (`max_results`) de publicaciones devueltas.
+ * 
+ * @param request - Objeto de petición que implementa la interfaz `FeedFilterPayload`:
+ *   - center_id: Identificador del centro universitario para delimitar el feed.
+ *   - type: Tipo de publicación a consultar ("lost" o "found").
+ *   - category: (Opcional) Filtrar por categoría específica (ej. tecnología, llaves).
+ *   - search_term: (Opcional) Cadena de búsqueda para filtro textual.
+ *   - max_results: (Opcional) Límite de publicaciones a retornar (por defecto 50).
+ *   - user_lat: (Opcional) Latitud del usuario para la ordenación espacial.
+ *   - user_lng: (Opcional) Longitud del usuario para la ordenación espacial.
+ *   - sort_by: (Opcional) Método de ordenación. Si es "distance", requiere `user_lat` y `user_lng`.
+ * 
+ * @returns Un objeto con la lista filtrada de posts (`feed`).
+ * 
+ * @throws {HttpsError}
+ *   - 'permission-denied': Si el correo del usuario no está verificado.
+ *   - 'invalid-argument': Si faltan los parámetros requeridos obligatorios (`center_id` o `type`).
+ */
 export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
@@ -22,22 +51,22 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
-    // 1. Leer solo las keys activas del índice secundario (no los posts completos aún)
+    // Consultar las claves de publicaciones activas desde el índice secundario de centros
     const activeKeysSnap = await admin.database()
         .ref(`active_posts/${center_id}`)
-        .orderByValue() // Ordenar por timestamp (valor en este índice)
+        .orderByValue()
         .once("value");
 
     if (!activeKeysSnap.exists()) return { feed: [] };
 
-    // 2. Recuperar los posts completos en paralelo usando las keys del índice
+    // Recuperar concurrently el detalle de cada post empleando las claves indexadas
     const postIds = Object.keys(activeKeysSnap.val());
     const postFetches = postIds.map(id =>
         admin.database().ref(`posts/${id}`).once("value")
     );
     const postSnaps = await Promise.all(postFetches);
 
-    // 3. Preparar palabras clave traducidas al idioma común para match multiidioma
+    // Preparar y normalizar términos de búsqueda traduciéndolos al idioma unificado del backend
     let searchWords: string[] = [];
     if (search_term?.trim()) {
         let translation = search_term.trim();
@@ -49,7 +78,7 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
     }
 
-    // 4. Filtrado en memoria del servidor
+    // Filtrar la información en memoria para afinar los resultados devueltos al cliente
     const filteredPosts: any[] = [];
 
     for (const snap of postSnaps) {
@@ -60,7 +89,7 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         if (category && post.category !== category) continue;
 
         if (searchWords.length > 0) {
-            // Combinamos título, descripción (original y traducida) y etiquetas visuales para una búsqueda exhaustiva
+            // Se agrupan campos textuales de texto original, traducciones automáticas y etiquetas visuales
             const contentToSearch = [
                 post.title,
                 post.description,
@@ -75,14 +104,13 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         filteredPosts.push(post);
     }
 
-    // 5. Aplicar ordenamiento según sort_by e inyectar distance_km si es necesario
+    // Organizar el feed en base al método especificado por el cliente (geográfico o cronológico)
     let feed: any[] = [];
 
     if (sort_by === "distance" && user_lat !== undefined && user_lng !== undefined) {
-        // Ordenar por distancia geográfica
+        // Ordenación de posts basada en distancia geográfica (GeoFire)
         const postsWithDistance = filteredPosts
             .map((post: any) => {
-                // Si el post no tiene coords válidas, excluirlo del resultado
                 if (!post.coords || post.coords.lat === undefined || post.coords.lng === undefined) {
                     return null;
                 }
@@ -95,13 +123,13 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
                     distance_km: distanceKm
                 };
             })
-            .filter((post: any) => post !== null) // Filtrar posts sin coords válidas
+            .filter((post: any) => post !== null)
             .sort((a: any, b: any) => a.distance_km - b.distance_km)
             .slice(0, max_results);
 
         feed = postsWithDistance;
     } else {
-        // Ordenar por fecha descendente (comportamiento por defecto)
+        // Ordenación cronológica predeterminada (de más reciente a más antiguo)
         feed = filteredPosts
             .sort((a, b) => b.created_at - a.created_at)
             .slice(0, max_results);

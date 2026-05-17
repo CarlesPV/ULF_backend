@@ -3,7 +3,7 @@ import { getNotificationString } from "./i18n";
 import { SupportedLanguage } from "./types";
 
 /**
- * Tipo de notificación para matches
+ * Clasificación de tipos de notificación push soportados por el sistema de emparejamiento.
  */
 export enum NotificationType {
     MATCH_FOUND = "match_found",
@@ -11,7 +11,7 @@ export enum NotificationType {
 }
 
 /**
- * Estructura de datos para una notificación
+ * Representa la estructura de datos obligatoria para construir una notificación push en FCM.
  */
 export interface NotificationPayload {
     type: NotificationType;
@@ -27,17 +27,26 @@ export interface NotificationPayload {
 }
 
 /**
- * Envía una notificación push FCM a un usuario
- * @param userId - UID del usuario receptor
- * @param payload - Datos de la notificación
- * @returns true si se envió al menos a un dispositivo, false si no hay tokens
+ * Transmite una notificación push a través de Firebase Cloud Messaging (FCM) a todos los dispositivos registrados de un usuario.
+ * 
+ * Este método implementa la siguiente lógica atómica y robusta:
+ * 1. Consulta la base de datos en `/users/{userId}/fcm_tokens` para obtener todos los tokens activos asociados al usuario.
+ * 2. Prepara la estructura del mensaje FCM serializando campos numéricos y objetos de datos.
+ * 3. Realiza la transmisión de forma concurrente para optimizar los tiempos de respuesta.
+ * 4. Gestión de Limpieza: Captura y maneja de forma segura las excepciones individuales por dispositivo. Si un token ha expirado 
+ *    o es inválido (`messaging/invalid-registration-token` o `messaging/registration-token-not-registered`), 
+ *    procede a removerlo automáticamente de la base de datos para evitar envíos infructuosos futuros.
+ * 
+ * @param userId - Identificador único del usuario destinatario.
+ * @param payload - Objeto con los metadatos y contenido textual estructurado para la notificación.
+ * 
+ * @returns Promesa que resuelve a `true` si la notificación se transmitió exitosamente a al menos un dispositivo; de lo contrario `false`.
  */
 export async function sendNotificationToUser(
     userId: string,
     payload: NotificationPayload
 ): Promise<boolean> {
     try {
-        // 1. Obtener todos los tokens FCM del usuario
         const tokensSnapshot = await admin
             .database()
             .ref(`users/${userId}/fcm_tokens`)
@@ -51,7 +60,6 @@ export async function sendNotificationToUser(
         const tokens = Object.keys(tokensSnapshot.val());
         if (tokens.length === 0) return false;
 
-        // 2. Preparar el mensaje para FCM
         const message = {
             notification: {
                 title: payload.title,
@@ -67,7 +75,7 @@ export async function sendNotificationToUser(
             },
         };
 
-        // 3. Enviar a todos los tokens en paralelo
+        // Enviar a todos los tokens concurrentemente manejando los errores individuales
         const sendPromises = tokens.map((token) =>
             admin
                 .messaging()
@@ -76,9 +84,8 @@ export async function sendNotificationToUser(
                     ...message,
                 })
                 .catch((error) => {
-                    // Log del error pero continuar con otros tokens
                     console.error(`Error enviando notificación a token ${token}:`, error);
-                    // Opcionalmente, eliminar tokens inválidos
+                    // Depurar tokens inactivos del almacenamiento de forma automática
                     if (
                         error.code === "messaging/invalid-registration-token" ||
                         error.code === "messaging/registration-token-not-registered"
@@ -108,10 +115,19 @@ export async function sendNotificationToUser(
 }
 
 /**
- * Notifica a un usuario sobre un match encontrado
- * @param userId - UID del usuario que recibirá la notificación
- * @param matchPost - Datos del post que coincide
- * @param matchScore - Score de la coincidencia
+ * Prepara y envía una alerta localizada al propietario de un objeto cuando se encuentra un match semántico compatible.
+ * 
+ * Flujo de ejecución:
+ * 1. Consulta la configuración de idioma del destinatario de manera defensiva bajo `/users/{userId}/settings/language`.
+ * 2. Si el idioma no se encuentra configurado o no pertenece a los soportados, realiza fallback automático a español ("es").
+ * 3. Obtiene el título y descripción localizados correspondientes al idioma resuelto desde el módulo `i18n`.
+ * 4. Invoca la transmisión push llamando a `sendNotificationToUser`.
+ * 
+ * @param userId - Identificador único del usuario receptor.
+ * @param matchPost - Propiedades básicas del objeto compatible recién indexado.
+ * @param matchScore - Puntuación de similitud semántica calculada para el emparejamiento.
+ * 
+ * @returns Promesa que indica el éxito de la transmisión.
  */
 export async function notifyMatchFound(
     userId: string,
@@ -123,7 +139,6 @@ export async function notifyMatchFound(
     },
     matchScore: number
 ): Promise<boolean> {
-    // 1. Obtener idioma del usuario de forma defensiva con fallback
     let lang: SupportedLanguage = "es";
     try {
         const userLangSnap = await admin.database().ref(`users/${userId}/settings/language`).once("value");
@@ -152,10 +167,13 @@ export async function notifyMatchFound(
 }
 
 /**
- * Notifica a múltiples usuarios sobre matches encontrados
- * @param userIds - Array de UIDs de usuarios a notificar
- * @param matchPost - Datos del post que coincide
- * @param matchScore - Score de la coincidencia
+ * Despega y distribuye concurrentemente alertas de coincidencia a múltiples usuarios sugeridos.
+ * 
+ * @param userIds - Arreglo con los identificadores únicos de los usuarios a notificar.
+ * @param matchPost - Datos del post compatible que activa la notificación de match.
+ * @param matchScore - Puntuación calculada del emparejamiento.
+ * 
+ * @returns Promesa que resuelve a un desglose con la cantidad de notificaciones completadas y fallidas.
  */
 export async function notifyMultipleUsersOfMatch(
     userIds: string[],

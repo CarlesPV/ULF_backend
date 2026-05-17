@@ -2,8 +2,30 @@ import * as functions from "firebase-functions";
 import { admin, db } from "../shared/firebase";
 import { I18N_STRINGS } from "../shared/i18n";
 
+/**
+ * Inicializa o recupera una conversación de chat existente para un post determinado.
+ * 
+ * Esta función de Cloud Call realiza el siguiente flujo:
+ * 1. Valida la autenticación de la petición.
+ * 2. Comprueba si ya existe un chat activo sobre el mismo objeto (`post_id`) entre el usuario actual y el propietario del post.
+ * 3. En caso de no existir, obtiene los perfiles del usuario actual y del propietario, así como los datos del post.
+ * 4. Desnormaliza información relevante (título, imagen del post y perfiles) para optimizar la carga del Feed de Chats.
+ * 5. Genera un nuevo nodo de chat inicializado con un mensaje del sistema.
+ * 6. Indexa la conversación en la lista de chats activos (`user_chats`) para ambos participantes en tiempo real.
+ * 
+ * @param request - Objeto de petición que contiene la información para el chat:
+ *   - postId: Identificador del post (objeto perdido/encontrado) relacionado.
+ *   - postOwnerId: Identificador único del propietario del post.
+ *   - centerId: Identificador del centro universitario asociado.
+ *   - postTitle: Título por defecto del post a utilizar como fallback.
+ * 
+ * @returns Un objeto con el identificador único (`chatId`) del chat creado o recuperado.
+ * 
+ * @throws {HttpsError}
+ *   - 'unauthenticated': Si el usuario de la petición no está autenticado en Firebase.
+ */
 export const getOrCreateChat = functions.https.onCall(async (request) => {
-    // 1. Validar autenticación (Relajado a petición para permitir usuarios autenticados)
+    // Validar autenticación del usuario solicitante
     if (!request.auth) {
         throw new functions.https.HttpsError("unauthenticated", I18N_STRINGS.errors.unauthorized);
     }
@@ -11,7 +33,7 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
     const uid = request.auth.uid;
     const { postId, postOwnerId, centerId, postTitle } = request.data;
 
-    // 2. Buscar si ya existe una conversación entre estos dos usuarios para este post
+    // Buscar si ya existe una conversación entre estos dos usuarios para este post concreto
     const chatsRef = db.ref("chats");
     const existingChatQuery = await chatsRef
         .orderByChild("post_id")
@@ -20,12 +42,12 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
 
     if (existingChatQuery.exists()) {
         const chats = existingChatQuery.val();
-        // Verificamos si el usuario actual es miembro de alguno de los chats de este post
+        // Verificar si el usuario solicitante es miembro de alguno de los chats vinculados a este post
         const existingChatId = Object.keys(chats).find(key => chats[key].members && chats[key].members[uid] === true);
         if (existingChatId) return { chatId: existingChatId };
     }
 
-    // 3. Obtener información para desnormalizar (Post y Perfiles de Usuario)
+    // Obtener información en paralelo de los perfiles y el post para desnormalizar datos
     const [postSnapshot, userSnapshot, ownerSnapshot] = await Promise.all([
         db.ref(`posts/${postId}`).once("value"),
         db.ref(`users/${uid}`).once("value"),
@@ -45,12 +67,12 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
         post_id: postId,
         post_owner_id: postOwnerId,
         postTitle: post?.title || postTitle || "Sin título",
-        postImageUrl: post?.postImageUrl || post?.imageUrl || post?.image_url || post?.photoUrl || null, // Prioridad al nuevo campo postImageUrl
+        postImageUrl: post?.postImageUrl || post?.imageUrl || post?.image_url || post?.photoUrl || null, // Prioridad a la propiedad postImageUrl
         members: {
             [uid]: true,
             [postOwnerId]: true
         },
-        // Desnormalización de info de usuarios para evitar consultas extra en el Feed de Chats
+        // Desnormalización de datos de los participantes para evitar lecturas extra en el listado de chats
         usersInfo: {
             [uid]: {
                 displayName: userData?.name || userData?.displayName || "Usuario",
@@ -62,13 +84,13 @@ export const getOrCreateChat = functions.https.onCall(async (request) => {
             }
         },
         created_at: admin.database.ServerValue.TIMESTAMP,
-        last_message: "SYSTEM_MSG_CHAT_STARTED", // Constante estricta para i18n en Frontend
+        last_message: "SYSTEM_MSG_CHAT_STARTED", // Constante estricta utilizada por el Frontend para su traducción i18n
         last_message_time: admin.database.ServerValue.TIMESTAMP
     };
 
     await newChatRef.set(chatData);
 
-    // 4. Indexar el chat para ambos usuarios
+    // Indexar el chat bajo la lista de conversaciones de ambos usuarios (user_chats) para sincronización en tiempo real
     const currentTimestamp = admin.database.ServerValue.TIMESTAMP;
     await db.ref(`user_chats/${uid}/${newChatId}`).set(currentTimestamp);
     await db.ref(`user_chats/${postOwnerId}/${newChatId}`).set(currentTimestamp);

@@ -48,7 +48,7 @@ firebase deploy --only database,functions,storage
 - [Esquema de Datos](docs/database.schema.md)
 - [Reglas de Seguridad (DB)](docs/database.rules.md)
 - [Reglas de Storage](docs/storage.rules.md)
-- [🔔 Sistema de Notificaciones de Matches](IMPLEMENTATION_SUMMARY.md) **← NUEVO**
+- [🔔 Sistema de Notificaciones de Matches](docs/NOTIFICATION_IMPLEMENTATION.md) **← NUEVO**
 
 ## 🔔 Notificaciones de Matches (Nuevo en Mayo 2026)
 
