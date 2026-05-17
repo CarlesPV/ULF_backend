@@ -5,6 +5,7 @@ import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { notifyMultipleUsersOfMatch } from "../shared/notifications";
 import { getHaversineDistance, isPointInPolygon } from "../shared/utils";
+import { I18N_STRINGS } from "../shared/i18n";
 
 // Cache para minimizar lecturas a DB en triggers de alta frecuencia
 const centersCache: Map<string, Center> = new Map();
@@ -251,14 +252,14 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
 async function validatePostLocation(post: any): Promise<void> {
     const { center_id, coords } = post;
     if (!center_id || !coords?.lat || !coords?.lng) {
-        throw new HttpsError("invalid-argument", "Datos geográficos incompletos.");
+        throw new HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
     let centerData = centersCache.get(center_id);
     if (!centerData) {
         const centerSnap = await admin.database().ref(`centers/${center_id}`).once("value");
         if (!centerSnap.exists()) {
-            throw new HttpsError("not-found", "El centro asociado no existe.");
+            throw new HttpsError("not-found", I18N_STRINGS.errors.center_not_found);
         }
         centerData = centerSnap.val() as Center;
         centersCache.set(center_id, centerData);
@@ -269,29 +270,29 @@ async function validatePostLocation(post: any): Promise<void> {
     // 1. Validación por Polígono (Prioritaria si existe)
     if (boundaries && boundaries.length > 0) {
         if (!isPointInPolygon(coords, boundaries)) {
-            throw new HttpsError("out-of-range", "La ubicación está fuera de los límites (boundaries) del centro.");
+            throw new HttpsError("out-of-range", I18N_STRINGS.errors.out_of_bounds_location);
         }
         return; // Si pasa el polígono, es suficiente
     }
 
     if (!location || location.lat === undefined || location.lng === undefined) {
         console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada en DB.`);
-        throw new HttpsError("internal", "Configuración de centro inválida.");
+        throw new HttpsError("internal", I18N_STRINGS.errors.center_config_error);
     }
 
     // 2. Validación Bounding Box (Fallback)
     if (bounds) {
         if (coords.lat < bounds.latMin || coords.lat > bounds.latMax ||
             coords.lng < bounds.lngMin || coords.lng > bounds.lngMax) {
-            throw new HttpsError("out-of-range", "La ubicación está fuera del área rectangular del centro.");
+            throw new HttpsError("out-of-range", I18N_STRINGS.errors.out_of_bounds_location);
         }
     }
 
-    // 3. Validación Haversine (Fallback)
+    // 3. Validación Haversine (Fallback) con 5% de margen de tolerancia
     const distance = getHaversineDistance(coords.lat, coords.lng, location.lat, location.lng);
-    const buffer = 50; // 50m de cortesía
-    if (distance > (radius_meters + buffer)) {
-        throw new HttpsError("out-of-range", "La ubicación está demasiado lejos del centro.");
+    const maxAllowedDistance = radius_meters * 1.05;
+    if (distance > maxAllowedDistance) {
+        throw new HttpsError("out-of-range", I18N_STRINGS.errors.out_of_bounds_location);
     }
 }
 
