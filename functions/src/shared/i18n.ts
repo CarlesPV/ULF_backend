@@ -38,7 +38,15 @@ export const I18N_STRINGS = {
         domain_not_authorized: "error_domain_not_authorized",
         center_inactive: "error_center_inactive",
         email_already_exists: "error_email_already_exists",
-        incomplete_data: "error_incomplete_data"
+        incomplete_data: "error_incomplete_data",
+        out_of_bounds_location: "error_out_of_bounds_location",
+        invalid_profile_data: "error_invalid_profile_data",
+        coords_required: "error_coords_required",
+        coords_invalid: "error_coords_invalid",
+        category_not_allowed: "error_category_not_allowed",
+        center_not_found: "error_center_not_found",
+        center_config_error: "error_center_config_error",
+        db_write_error: "error_db_write_error"
     }
 };
 

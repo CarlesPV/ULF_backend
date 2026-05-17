@@ -511,7 +511,53 @@ describe("post triggers", () => {
       }, "post-fail-poly", update, remove));
 
       expect(update).toHaveBeenCalledWith(expect.objectContaining({
-        status: "rejected"
+        status: "rejected",
+        rejection_reason: "error_out_of_bounds_location"
+      }));
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    test("onPostCreated ACCEPTs coordinates just inside the 5% margin limit (~1145m for 1100m radius)", async () => {
+      const env = setupCallableTestEnv({
+        onceByPath: { "centers/uab": validCenter }
+      });
+      const { onPostCreated: onPostCreatedTrigger } = require("../../lib/posts/postTriggers");
+
+      await onPostCreatedTrigger(createdEvent({
+        center_id: "uab",
+        status: "active",
+        is_deleted: false,
+        created_at: 123,
+        coords: { lat: 41.5111587, lng: 2.1042399 } // ~1145m (dentro de 1155m)
+      }));
+
+      expect(env.writes).toContainEqual(expect.objectContaining({
+        op: "set",
+        path: "active_posts/uab/post-1"
+      }));
+    });
+
+    test("onPostCreated REJECTs coordinates just outside the 5% margin limit (~1156m for 1100m radius)", async () => {
+      const env = setupCallableTestEnv({
+        onceByPath: { "centers/uab": validCenter }
+      });
+      const update = jest.fn(async () => undefined);
+      const remove = jest.fn(async () => undefined);
+      const { onPostCreated: onPostCreatedTrigger } = require("../../lib/posts/postTriggers");
+
+      await onPostCreatedTrigger(createdEvent({
+        center_id: "uab",
+        status: "active",
+        is_deleted: false,
+        coords: { lat: 41.5112587, lng: 2.1042399 } // ~1156m (fuera de 1155m)
+      }, "post-fail-tolerance", update, remove));
+
+      expect(env.writes).not.toContainEqual(expect.objectContaining({
+        path: "active_posts/uab/post-fail-tolerance"
+      }));
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        status: "rejected",
+        rejection_reason: "error_out_of_bounds_location"
       }));
       expect(remove).not.toHaveBeenCalled();
     });

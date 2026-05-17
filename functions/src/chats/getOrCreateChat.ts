@@ -1,10 +1,11 @@
 import * as functions from "firebase-functions";
 import { admin, db } from "../shared/firebase";
+import { I18N_STRINGS } from "../shared/i18n";
 
 export const getOrCreateChat = functions.https.onCall(async (request) => {
     // 1. Validar autenticación (Relajado a petición para permitir usuarios autenticados)
     if (!request.auth) {
-        throw new functions.https.HttpsError("unauthenticated", "Debe estar autenticado para iniciar un chat.");
+        throw new functions.https.HttpsError("unauthenticated", I18N_STRINGS.errors.unauthorized);
     }
 
     const uid = request.auth.uid;

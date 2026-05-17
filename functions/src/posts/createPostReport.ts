@@ -3,6 +3,7 @@ import * as geofire from "geofire-common";
 import { admin } from "../shared/firebase";
 import { PostReportPayload, Center } from "../shared/types";
 import { getHaversineDistance, isPointInPolygon } from "../shared/utils";
+import { I18N_STRINGS } from "../shared/i18n";
 
 // Cache en memoria para minimizar lecturas a la base de datos
 const centersCache: Map<string, Center> = new Map();
@@ -13,7 +14,7 @@ const centersCache: Map<string, Center> = new Map();
 export const createPostReport = functions.https.onCall(async (request) => {
     // 1. Validación de Autenticación usando el objeto 'request'
     if (!request.auth || !request.auth.token.email_verified) {
-        throw new functions.https.HttpsError("permission-denied", "Debes verificar tu correo para publicar.");
+        throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
     }
 
     // 2. Casteo de los datos a nuestra interfaz definida para mayor seguridad y claridad
@@ -26,20 +27,20 @@ export const createPostReport = functions.https.onCall(async (request) => {
     const allowedCategories = ["accessories", "clothes", "devices", "wallets", "keys", "bags", "study", "others"];
     
     if (!center_id || !type || !category || !title) {
-        throw new functions.https.HttpsError("invalid-argument", "Datos básicos incompletos.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
     // Validación explícita de coordenadas para evitar ceros falsos o nulos
     if (lat === null || lat === undefined || lng === null || lng === undefined) {
-        throw new functions.https.HttpsError("invalid-argument", "Coordenadas geográficas requeridas (lat/lng).");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.coords_required);
     }
 
     if (typeof lat !== "number" || typeof lng !== "number") {
-        throw new functions.https.HttpsError("invalid-argument", "Las coordenadas deben ser números válidos.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.coords_invalid);
     }
 
     if (!allowedCategories.includes(category)) {
-        throw new functions.https.HttpsError("invalid-argument", "Categoría no permitida.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.category_not_allowed);
     }
 
     // 3.5 Validación de límites geográficos (Bounding Box y Radio Haversine)
@@ -48,7 +49,7 @@ export const createPostReport = functions.https.onCall(async (request) => {
     if (!centerData) {
         const centerSnap = await admin.database().ref(`centers/${center_id}`).once("value");
         if (!centerSnap.exists()) {
-            throw new functions.https.HttpsError("not-found", "El centro especificado no existe.");
+            throw new functions.https.HttpsError("not-found", I18N_STRINGS.errors.center_not_found);
         }
         centerData = centerSnap.val() as Center;
         centersCache.set(center_id, centerData);
@@ -58,7 +59,7 @@ export const createPostReport = functions.https.onCall(async (request) => {
 
     if (!location || location.lat === undefined || location.lng === undefined) {
         console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada.`);
-        throw new functions.https.HttpsError("internal", "Error de configuración del centro (ubicación faltante).");
+        throw new functions.https.HttpsError("internal", I18N_STRINGS.errors.center_config_error);
     }
 
     // 0. Validación por Polígono (Prioritaria si existe)
@@ -66,7 +67,7 @@ export const createPostReport = functions.https.onCall(async (request) => {
         if (!isPointInPolygon({ lat, lng }, boundaries)) {
             throw new functions.https.HttpsError(
                 "out-of-range", 
-                "La ubicación está fuera de los límites (boundaries) del centro."
+                I18N_STRINGS.errors.out_of_bounds_location
             );
         }
     } else {
@@ -84,19 +85,19 @@ export const createPostReport = functions.https.onCall(async (request) => {
         if (isOutOfRange) {
             throw new functions.https.HttpsError(
                 "out-of-range", 
-                "La ubicación seleccionada está fuera del campus (límites rectangulares)."
+                I18N_STRINGS.errors.out_of_bounds_location
             );
         }
     }
 
-    // Validación por Radio Haversine (precisa)
+    // Validación por Radio Haversine (precisa) con 5% de margen de tolerancia
     const distance = getHaversineDistance(lat, lng, location.lat, location.lng);
-    const buffer = 50; // 50 metros de margen de error para GPS
+    const maxAllowedDistance = radius_meters * 1.05;
     
-    if (distance > (radius_meters + buffer)) {
+    if (distance > maxAllowedDistance) {
         throw new functions.https.HttpsError(
             "out-of-range", 
-            `Ubicación demasiado lejana del centro (${Math.round(distance)}m). El máximo permitido es ${radius_meters + buffer}m.`
+            I18N_STRINGS.errors.out_of_bounds_location
         );
     }
 
@@ -132,6 +133,6 @@ export const createPostReport = functions.https.onCall(async (request) => {
         return { success: true, post_id: postId };
     } catch (error) {
         console.error("Error guardando post:", error);
-        throw new functions.https.HttpsError("internal", "Error al procesar el reporte.");
+        throw new functions.https.HttpsError("internal", I18N_STRINGS.errors.db_write_error);
     }
 });

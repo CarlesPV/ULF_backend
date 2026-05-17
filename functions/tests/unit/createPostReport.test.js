@@ -113,7 +113,7 @@ describe("createPostReport", () => {
             fail("Should have thrown an error");
         } catch (error) {
             expect(error.code).toBe("out-of-range");
-            expect(error.message).toContain("fuera del campus");
+            expect(error.message).toBe("error_out_of_bounds_location");
         }
     });
 
@@ -137,7 +137,7 @@ describe("createPostReport", () => {
             fail("Should have thrown an error");
         } catch (error) {
             expect(error.code).toBe("invalid-argument");
-            expect(error.message).toContain("Coordenadas geográficas requeridas");
+            expect(error.message).toBe("error_coords_required");
         }
     });
 
@@ -161,7 +161,7 @@ describe("createPostReport", () => {
             fail("Should have thrown an error");
         } catch (error) {
             expect(error.code).toBe("invalid-argument");
-            expect(error.message).toContain("deben ser números válidos");
+            expect(error.message).toBe("error_coords_invalid");
         }
     });
 
@@ -243,5 +243,48 @@ describe("createPostReport", () => {
                 photo_path: "posts/mock/image.jpg"
             })
         }));
+    });
+
+    test("should ACCEPT coordinates just inside the 5% margin limit (e.g. 1145m for 1100m radius)", async () => {
+        const { createPostReport } = require("../../lib/posts/createPostReport");
+
+        const request = {
+            auth: { uid: "user1", token: { email_verified: true } },
+            data: {
+                center_id: "uab",
+                type: "found",
+                title: "Objeto al borde del radio",
+                category: "others",
+                lat: 41.5103, // ~1145m (dentro de 1100 * 1.05 = 1155m)
+                lng: 2.10
+            }
+        };
+
+        const result = await createPostReport(request);
+        expect(result.success).toBe(true);
+    });
+
+    test("should REJECT coordinates just outside the 5% margin limit (e.g. 1156m for 1100m radius)", async () => {
+        const { createPostReport } = require("../../lib/posts/createPostReport");
+
+        const request = {
+            auth: { uid: "user1", token: { email_verified: true } },
+            data: {
+                center_id: "uab",
+                type: "found",
+                title: "Objeto fuera de tolerancia",
+                category: "others",
+                lat: 41.5104, // ~1156m (fuera de 1155m)
+                lng: 2.10
+            }
+        };
+
+        try {
+            await createPostReport(request);
+            fail("Should have rejected coordinates outside 5% tolerance");
+        } catch (error) {
+            expect(error.code).toBe("out-of-range");
+            expect(error.message).toBe("error_out_of_bounds_location");
+        }
     });
 });
