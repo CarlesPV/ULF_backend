@@ -2,7 +2,11 @@ import * as functions from "firebase-functions";
 import * as geofire from "geofire-common";
 import { admin } from "../shared/firebase";
 import { PostReportPayload, Center } from "../shared/types";
-import { getHaversineDistance, isPointInPolygon } from "../shared/utils";
+import { getHaversineDistance } from "../shared/utils";
+import { I18N_STRINGS } from "../shared/i18n";
+
+// Margen de tolerancia de 50 metros para compensar punto flotante y GPS (según roadmap.md)
+const LOCATION_TOLERANCE_METERS = 50;
 
 // Cache en memoria para minimizar lecturas a la base de datos
 const centersCache: Map<string, Center> = new Map();
@@ -13,7 +17,7 @@ const centersCache: Map<string, Center> = new Map();
 export const createPostReport = functions.https.onCall(async (request) => {
     // 1. Validación de Autenticación usando el objeto 'request'
     if (!request.auth || !request.auth.token.email_verified) {
-        throw new functions.https.HttpsError("permission-denied", "Debes verificar tu correo para publicar.");
+        throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
     }
 
     // 2. Casteo de los datos a nuestra interfaz definida para mayor seguridad y claridad
@@ -26,20 +30,20 @@ export const createPostReport = functions.https.onCall(async (request) => {
     const allowedCategories = ["accessories", "clothes", "devices", "wallets", "keys", "bags", "study", "others"];
     
     if (!center_id || !type || !category || !title) {
-        throw new functions.https.HttpsError("invalid-argument", "Datos básicos incompletos.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
     // Validación explícita de coordenadas para evitar ceros falsos o nulos
     if (lat === null || lat === undefined || lng === null || lng === undefined) {
-        throw new functions.https.HttpsError("invalid-argument", "Coordenadas geográficas requeridas (lat/lng).");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.coords_required);
     }
 
     if (typeof lat !== "number" || typeof lng !== "number") {
-        throw new functions.https.HttpsError("invalid-argument", "Las coordenadas deben ser números válidos.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.coords_invalid);
     }
 
     if (!allowedCategories.includes(category)) {
-        throw new functions.https.HttpsError("invalid-argument", "Categoría no permitida.");
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.category_not_allowed);
     }
 
     // 3.5 Validación de límites geográficos (Bounding Box y Radio Haversine)
@@ -48,55 +52,42 @@ export const createPostReport = functions.https.onCall(async (request) => {
     if (!centerData) {
         const centerSnap = await admin.database().ref(`centers/${center_id}`).once("value");
         if (!centerSnap.exists()) {
-            throw new functions.https.HttpsError("not-found", "El centro especificado no existe.");
+            throw new functions.https.HttpsError("not-found", I18N_STRINGS.errors.center_not_found);
         }
         centerData = centerSnap.val() as Center;
         centersCache.set(center_id, centerData);
     }
 
-    const { bounds, location, radius_meters, boundaries } = centerData;
+    const { location, radius_meters } = centerData;
 
     if (!location || location.lat === undefined || location.lng === undefined) {
         console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada.`);
-        throw new functions.https.HttpsError("internal", "Error de configuración del centro (ubicación faltante).");
+        throw new functions.https.HttpsError("internal", I18N_STRINGS.errors.center_config_error);
     }
 
-    // 0. Validación por Polígono (Prioritaria si existe)
+    // DESACTIVADO POR ROADMAP: Los polígonos tienen aristas matemáticas exactas que no perdonan errores
+    // de punto flotante o GPS. Usamos únicamente la distancia Haversine + tolerancia de 50m.
+    /*
     if (boundaries && boundaries.length > 0) {
         if (!isPointInPolygon({ lat, lng }, boundaries)) {
             throw new functions.https.HttpsError(
                 "out-of-range", 
-                "La ubicación está fuera de los límites (boundaries) del centro."
-            );
-        }
-    } else {
-        // Fallback a validaciones antiguas si no hay polígono definido
-    }
-
-    // Validación por Bounding Box (rápida)
-    if (bounds) {
-        const isOutOfRange = 
-            lat < bounds.latMin || 
-            lat > bounds.latMax || 
-            lng < bounds.lngMin || 
-            lng > bounds.lngMax;
-
-        if (isOutOfRange) {
-            throw new functions.https.HttpsError(
-                "out-of-range", 
-                "La ubicación seleccionada está fuera del campus (límites rectangulares)."
+                I18N_STRINGS.errors.out_of_bounds_location
             );
         }
     }
+    */
 
-    // Validación por Radio Haversine (precisa)
+    // Validación por Radio Haversine con tolerancia de 50 metros para compensar punto flotante entre Flutter y Node.js
     const distance = getHaversineDistance(lat, lng, location.lat, location.lng);
-    const buffer = 50; // 50 metros de margen de error para GPS
+    const maxAllowedDistance = radius_meters + LOCATION_TOLERANCE_METERS;
     
-    if (distance > (radius_meters + buffer)) {
+    functions.logger.info(`[Geovallado createPostReport] Post: ${title} | Distancia: ${distance.toFixed(2)}m | Radio: ${radius_meters}m | Tolerancia: ${LOCATION_TOLERANCE_METERS}m | Max permitido: ${maxAllowedDistance}m`);
+
+    if (distance > maxAllowedDistance) {
         throw new functions.https.HttpsError(
             "out-of-range", 
-            `Ubicación demasiado lejana del centro (${Math.round(distance)}m). El máximo permitido es ${radius_meters + buffer}m.`
+            I18N_STRINGS.errors.out_of_bounds_location
         );
     }
 
@@ -132,6 +123,6 @@ export const createPostReport = functions.https.onCall(async (request) => {
         return { success: true, post_id: postId };
     } catch (error) {
         console.error("Error guardando post:", error);
-        throw new functions.https.HttpsError("internal", "Error al procesar el reporte.");
+        throw new functions.https.HttpsError("internal", I18N_STRINGS.errors.db_write_error);
     }
 });

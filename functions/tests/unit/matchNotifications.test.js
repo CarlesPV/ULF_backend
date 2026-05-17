@@ -144,4 +144,32 @@ describe("Match Notification System", () => {
         expect(result).toEqual({ success: 1, failed: 1 });
         expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
     });
+
+    test("notifyMatchFound falls back gracefully to 'es' on unsupported language or database retrieval error", async () => {
+        jest.spyOn(console, "error").mockImplementation(() => {});
+        const env = setupCallableTestEnv({
+            onceByPath: {
+                "users/user-fallback/settings/language": "invalid-lang", // unsupported language
+                "users/user-fallback/fcm_tokens": {
+                    "token-fallback": true
+                }
+            }
+        });
+        const { notifyMatchFound } = require("../../lib/shared/notifications");
+
+        const result = await notifyMatchFound("user-fallback", {
+            id: "post-88",
+            title: "Item",
+            description: "Desc"
+        }, 3.0);
+
+        expect(result).toBe(true);
+        expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
+            token: "token-fallback",
+            notification: {
+                title: "¡Coincidencia encontrada!", // Spanish fallback title
+                body: "Se encontró un objeto que podría coincidir con tu búsqueda."
+            }
+        }));
+    });
 });

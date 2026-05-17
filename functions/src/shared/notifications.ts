@@ -123,9 +123,17 @@ export async function notifyMatchFound(
     },
     matchScore: number
 ): Promise<boolean> {
-    // 1. Obtener idioma del usuario
-    const userLangSnap = await admin.database().ref(`users/${userId}/settings/language`).once("value");
-    const lang = (userLangSnap.val() as SupportedLanguage) || "es";
+    // 1. Obtener idioma del usuario de forma defensiva con fallback
+    let lang: SupportedLanguage = "es";
+    try {
+        const userLangSnap = await admin.database().ref(`users/${userId}/settings/language`).once("value");
+        const val = userLangSnap.val();
+        if (val === "ca" || val === "es" || val === "en") {
+            lang = val;
+        }
+    } catch (error) {
+        console.error(`Error obteniendo idioma preferido del usuario ${userId}:`, error);
+    }
 
     const payload: NotificationPayload = {
         type: NotificationType.MATCH_FOUND,

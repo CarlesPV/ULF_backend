@@ -1,22 +1,10 @@
-## Tareas de Seguridad, Validaciones y Storage (Backend)
+# Roadmap de Corrección Definitiva - Backend (Firebase)
 
-Este bloque define las instrucciones para dar soporte al frontend mediante modelos de datos actualizados, reglas de acceso correctas y validaciones preventivas.
-
-### 1. Reglas de Acceso a Storage (Fix Error 403)
-**Objetivo:** Permitir que el gestor de caché del frontend (que hace peticiones HTTP estándar sin cabeceras de Firebase Auth) pueda leer las imágenes de perfil y publicaciones.
-* **Paso 1.1:** Abre `storage/rules/storage.rules`.
-* **Paso 1.2:** En los bloques de `posts/{postId}/{imageName}`, `users/{userId}/profile_image` y la versión `.webp`, cambia la regla de lectura a `allow read: if true;`. Mantén las reglas de escritura (`allow write`) estrictamente autenticadas como están ahora.
-
-### 2. Modelado de Datos para Geocercas
-**Objetivo:** Proveer la información geográfica de los centros.
-* **Paso 2.1:** Abre `database/seed/data/centers.json`. Añade a los centros (ej. UAB) una nueva propiedad `boundaries` que contenga un array de coordenadas (lat, lng) formando el polígono del recinto.
-
-### 3. Validación de Ubicación No Destructiva
-**Objetivo:** Proteger la base de datos de inyecciones fuera de rango sin gastar operaciones de borrado.
-* **Paso 3.1:** Abre `functions/src/posts/postTriggers.ts`.
-* **Paso 3.2:** En el trigger de creación (`onWrite` u `onCreate`), valida matemáticamente las coordenadas enviadas contra los `boundaries` del centro asociado.
-* **Paso 3.3:** Si están fuera de rango, no uses `.delete()`. En su lugar, rechaza la operación lanzando un error HTTP explícito o marcando el documento con `status: "rejected"`.
-
-### 4. Caché de Metadatos en Storage
-**Objetivo:** Optimizar la validación de caché del frontend.
-* **Paso 4.1:** Abre `functions/src/storage/onImageUploaded.ts`. Al procesar/guardar la imagen optimizada (WebP), establece explícitamente los metadatos de `Cache-Control` en `public, max-age=3600, s-maxage=3600`.
+## 1. Implementación de Buffer de Tolerancia en Geovallado
+**Objetivo:** Compensar las pérdidas de precisión de punto flotante y las fluctuaciones del GPS añadiendo un margen de gracia al cálculo de distancias, evitando que pines limítrofes sean marcados como `rejected`.
+* **Archivos objetivo:** `functions/src/shared/utils.ts` (o donde resida la función `calculateDistance` / `isPointInArea`) y `functions/src/posts/postTriggers.ts`.
+* **Tareas Atómicas:**
+    1.  **Constante de Tolerancia:** Definir una constante `LOCATION_TOLERANCE_METERS = 50` (50 metros).
+    2.  **Modificación de la Condición:** Modificar la lógica que decide si un post es rechazado. En lugar de evaluar estrictamente `distance <= center.radius`, la evaluación debe ser obligatoriamente: `distance <= (center.radius + LOCATION_TOLERANCE_METERS)`.
+    3.  **Desactivación de Polígonos Estrictos:** Si la validación actual está utilizando el array de polígonos (`boundaries`) para dictaminar el `status: rejected`, comentar/eliminar esa evaluación específica para este trigger y usar **únicamente** la distancia Haversine desde el `center.coordinates` con la tolerancia añadida. Los polígonos tienen aristas matemáticas exactas que no perdonan errores de milímetros.
+    4.  **Logging Claro:** Añadir un `functions.logger.info` que imprima la distancia calculada vs el radio permitido para facilitar la depuración si vuelve a fallar.

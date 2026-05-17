@@ -441,35 +441,48 @@ describe("post triggers", () => {
       expect(remove).not.toHaveBeenCalled();
     });
 
-    test("onPostCreated deletes posts outside the center bounding box", async () => {
+    test("onPostCreated accepts posts outside the center bounding box but within the Haversine radius", async () => {
+      const centerWithTightBounds = {
+        ...validCenter,
+        bounds: {
+          latMin: 41.50, // Caja muy restringida en el sur
+          latMax: 41.52,
+          lngMin: 2.08,
+          lngMax: 2.13
+        }
+      };
       const env = setupCallableTestEnv({
-        onceByPath: { "centers/uab": validCenter }
+        onceByPath: { "centers/uab": centerWithTightBounds }
       });
       const update = jest.fn(async () => undefined);
       const remove = jest.fn(async () => undefined);
       const { onPostCreated } = require("../../lib/posts/postTriggers");
 
+      // lat: 41.495 es exterior al latMin (41.50), pero está a ~650m del centro (41.5008587), dentro del radio de 1100m
       await onPostCreated(createdEvent({
         center_id: "uab",
         status: "active",
         is_deleted: false,
-        coords: { lat: 41.0, lng: 2.0 }
-      }, "post-fail-box", update, remove));
+        created_at: 123,
+        coords: { lat: 41.495, lng: 2.1042399 }
+      }, "post-success-outside-box", update, remove));
 
-      expect(update).toHaveBeenCalledWith(expect.objectContaining({
-        status: "rejected"
+      expect(env.writes).toContainEqual(expect.objectContaining({
+        op: "set",
+        path: "active_posts/uab/post-success-outside-box"
       }));
-      expect(remove).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
     });
 
-    test("onPostCreated accepts posts within polygon boundaries", async () => {
+    test("onPostCreated ignores polygon boundaries and accepts posts outside the polygon but within radius + tolerance", async () => {
       const polygonCenter = {
         ...validCenter,
+        // Polígono muy pequeño alrededor del centro de UAB
         boundaries: [
-          { lat: 41.51, lng: 2.09 },
-          { lat: 41.51, lng: 2.11 },
-          { lat: 41.49, lng: 2.11 },
-          { lat: 41.49, lng: 2.09 }
+          { lat: 41.502, lng: 2.103 },
+          { lat: 41.502, lng: 2.105 },
+          { lat: 41.499, lng: 2.105 },
+          { lat: 41.499, lng: 2.103 }
         ]
       };
       const env = setupPostTriggerEnv({ onceByPath: { "centers/uab": polygonCenter } });
@@ -480,7 +493,8 @@ describe("post triggers", () => {
         status: "active",
         is_deleted: false,
         created_at: 123,
-        coords: { lat: 41.50, lng: 2.10 } // Centro del cuadrado
+        // Coordenadas a ~350m de distancia (fuera del mini polígono, pero dentro del radio de 1100m + 50m de tolerancia)
+        coords: { lat: 41.5008587, lng: 2.100 }
       }));
 
       expect(env.writes).toContainEqual(expect.objectContaining({
@@ -488,7 +502,7 @@ describe("post triggers", () => {
       }));
     });
 
-    test("onPostCreated rejects posts outside polygon boundaries", async () => {
+    test("onPostCreated rejects posts outside the polygon if they are also outside radius + tolerance", async () => {
       const polygonCenter = {
         ...validCenter,
         boundaries: [
@@ -507,11 +521,58 @@ describe("post triggers", () => {
         center_id: "uab",
         status: "active",
         is_deleted: false,
-        coords: { lat: 41.52, lng: 2.10 } // Fuera por el norte
+        // Coordenadas a ~2150m del centro (fuera de radio + tolerancia de 1150m)
+        coords: { lat: 41.52, lng: 2.10 }
       }, "post-fail-poly", update, remove));
 
       expect(update).toHaveBeenCalledWith(expect.objectContaining({
-        status: "rejected"
+        status: "rejected",
+        rejection_reason: "error_out_of_bounds_location"
+      }));
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    test("onPostCreated ACCEPTs coordinates just inside the 50m tolerance buffer limit (~1145m for 1100m radius)", async () => {
+      const env = setupCallableTestEnv({
+        onceByPath: { "centers/uab": validCenter }
+      });
+      const { onPostCreated: onPostCreatedTrigger } = require("../../lib/posts/postTriggers");
+
+      await onPostCreatedTrigger(createdEvent({
+        center_id: "uab",
+        status: "active",
+        is_deleted: false,
+        created_at: 123,
+        coords: { lat: 41.5111587, lng: 2.1042399 } // ~1145m (dentro de 1150m)
+      }));
+
+      expect(env.writes).toContainEqual(expect.objectContaining({
+        op: "set",
+        path: "active_posts/uab/post-1"
+      }));
+    });
+
+    test("onPostCreated REJECTs coordinates just outside the 50m tolerance buffer limit (~1156m for 1100m radius)", async () => {
+      const env = setupCallableTestEnv({
+        onceByPath: { "centers/uab": validCenter }
+      });
+      const update = jest.fn(async () => undefined);
+      const remove = jest.fn(async () => undefined);
+      const { onPostCreated: onPostCreatedTrigger } = require("../../lib/posts/postTriggers");
+
+      await onPostCreatedTrigger(createdEvent({
+        center_id: "uab",
+        status: "active",
+        is_deleted: false,
+        coords: { lat: 41.5112587, lng: 2.1042399 } // ~1156m (fuera de 1150m)
+      }, "post-fail-tolerance", update, remove));
+
+      expect(env.writes).not.toContainEqual(expect.objectContaining({
+        path: "active_posts/uab/post-fail-tolerance"
+      }));
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        status: "rejected",
+        rejection_reason: "error_out_of_bounds_location"
       }));
       expect(remove).not.toHaveBeenCalled();
     });
