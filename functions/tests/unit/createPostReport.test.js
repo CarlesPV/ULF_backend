@@ -245,7 +245,7 @@ describe("createPostReport", () => {
         }));
     });
 
-    test("should ACCEPT coordinates just inside the 5% margin limit (e.g. 1145m for 1100m radius)", async () => {
+    test("should ACCEPT coordinates just inside the 50m tolerance buffer limit (e.g. 1145m for 1100m radius)", async () => {
         const { createPostReport } = require("../../lib/posts/createPostReport");
 
         const request = {
@@ -255,7 +255,7 @@ describe("createPostReport", () => {
                 type: "found",
                 title: "Objeto al borde del radio",
                 category: "others",
-                lat: 41.5103, // ~1145m (dentro de 1100 * 1.05 = 1155m)
+                lat: 41.5103, // ~1145m (dentro de 1100m + 50m = 1150m)
                 lng: 2.10
             }
         };
@@ -264,7 +264,7 @@ describe("createPostReport", () => {
         expect(result.success).toBe(true);
     });
 
-    test("should REJECT coordinates just outside the 5% margin limit (e.g. 1156m for 1100m radius)", async () => {
+    test("should REJECT coordinates just outside the 50m tolerance buffer limit (e.g. 1156m for 1100m radius)", async () => {
         const { createPostReport } = require("../../lib/posts/createPostReport");
 
         const request = {
@@ -274,14 +274,14 @@ describe("createPostReport", () => {
                 type: "found",
                 title: "Objeto fuera de tolerancia",
                 category: "others",
-                lat: 41.5104, // ~1156m (fuera de 1155m)
+                lat: 41.5104, // ~1156m (fuera de 1150m)
                 lng: 2.10
             }
         };
 
         try {
             await createPostReport(request);
-            fail("Should have rejected coordinates outside 5% tolerance");
+            fail("Should have rejected coordinates outside 50m tolerance");
         } catch (error) {
             expect(error.code).toBe("out-of-range");
             expect(error.message).toBe("error_out_of_bounds_location");

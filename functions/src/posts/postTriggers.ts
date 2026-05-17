@@ -4,8 +4,12 @@ import { admin } from "../shared/firebase";
 import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { notifyMultipleUsersOfMatch } from "../shared/notifications";
-import { getHaversineDistance, isPointInPolygon } from "../shared/utils";
+import { getHaversineDistance } from "../shared/utils";
 import { I18N_STRINGS } from "../shared/i18n";
+import { logger } from "firebase-functions";
+
+// Margen de tolerancia de 50 metros para compensar punto flotante y GPS (según roadmap.md)
+const LOCATION_TOLERANCE_METERS = 50;
 
 // Cache para minimizar lecturas a DB en triggers de alta frecuencia
 const centersCache: Map<string, Center> = new Map();
@@ -265,24 +269,30 @@ async function validatePostLocation(post: any): Promise<void> {
         centersCache.set(center_id, centerData);
     }
 
-    const { location, radius_meters, boundaries } = centerData;
+    const { location, radius_meters } = centerData;
 
-    // 1. Validación por Polígono (Prioritaria si existe)
+    // DESACTIVADO POR ROADMAP: Los polígonos tienen aristas matemáticas exactas que no perdonan errores
+    // de punto flotante o GPS. Usamos únicamente la distancia Haversine + tolerancia de 50m.
+    /*
     if (boundaries && boundaries.length > 0) {
         if (!isPointInPolygon(coords, boundaries)) {
             throw new HttpsError("out-of-range", I18N_STRINGS.errors.out_of_bounds_location);
         }
         return; // Si pasa el polígono, es suficiente
     }
+    */
 
     if (!location || location.lat === undefined || location.lng === undefined) {
         console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada en DB.`);
         throw new HttpsError("internal", I18N_STRINGS.errors.center_config_error);
     }
 
-    // 3. Validación Haversine (Fallback) con 5% de margen de tolerancia
+    // Validación Haversine con tolerancia de 50 metros para compensar punto flotante entre Flutter y Node.js
     const distance = getHaversineDistance(coords.lat, coords.lng, location.lat, location.lng);
-    const maxAllowedDistance = radius_meters * 1.05;
+    const maxAllowedDistance = radius_meters + LOCATION_TOLERANCE_METERS;
+
+    logger.info(`[Geovallado onPostCreated] Post: ${post.id || "nuevo"} | Distancia: ${distance.toFixed(2)}m | Radio: ${radius_meters}m | Tolerancia: ${LOCATION_TOLERANCE_METERS}m | Max permitido: ${maxAllowedDistance}m`);
+
     if (distance > maxAllowedDistance) {
         throw new HttpsError("out-of-range", I18N_STRINGS.errors.out_of_bounds_location);
     }

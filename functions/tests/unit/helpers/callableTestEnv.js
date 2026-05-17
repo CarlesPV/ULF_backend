@@ -186,6 +186,12 @@ function setupCallableTestEnv(options = {}) {
     https: {
       HttpsError,
       onCall: (handler) => handler
+    },
+    logger: {
+      info: jest.fn((...args) => console.log(...args)),
+      error: jest.fn((...args) => console.error(...args)),
+      warn: jest.fn((...args) => console.warn(...args)),
+      debug: jest.fn((...args) => console.debug(...args))
     }
   }));
 

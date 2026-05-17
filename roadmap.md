@@ -1,13 +1,10 @@
-# Roadmap de Implementación y Corrección - Backend (Firebase)
+# Roadmap de Corrección Definitiva - Backend (Firebase)
 
-## 1. Unificación de Lógica de Ubicación (Radio vs Bounding Box)
-**Objetivo:** Solucionar el error de `status: rejected` eliminando la discrepancia matemática entre la interfaz gráfica (radio/círculo) y el validador del backend (rectángulo).
-* **Archivos objetivo:** `functions/src/posts/createPostReport.ts` y `functions/src/posts/postTriggers.ts`.
+## 1. Implementación de Buffer de Tolerancia en Geovallado
+**Objetivo:** Compensar las pérdidas de precisión de punto flotante y las fluctuaciones del GPS añadiendo un margen de gracia al cálculo de distancias, evitando que pines limítrofes sean marcados como `rejected`.
+* **Archivos objetivo:** `functions/src/shared/utils.ts` (o donde resida la función `calculateDistance` / `isPointInArea`) y `functions/src/posts/postTriggers.ts`.
 * **Tareas Atómicas:**
-    1.  **Eliminación del Conflicto de Geometría:** Localizar la validación por `bounds` (el rectángulo generado por `latMin/latMax` y `lngMin/lngMax`). Como el frontend dibuja un área circular (radio), el validador de `bounds` del backend "corta" las áreas curvas del círculo, rechazando pines válidos. Se debe **eliminar** o saltar la validación de `bounds` estricta, y hacer que la validación por **distancia Haversine (radio)** sea la única fuente de la verdad para determinar si el punto está dentro del recinto.
-
-## 2. Actualización de Reglas de Seguridad de Edición (Permission Denied)
-**Objetivo:** Permitir la edición de todas las publicaciones solucionando las restricciones estrictas en las reglas de la base de datos.
-* **Archivos objetivo:** `database/rules/database.rules.json`
-* **Tareas Atómicas:**
-    1.  **Soporte para el Ciclo Completo de Estados:** El error al editar ocurre porque la regla actual para el nodo `status` en `posts` solo valida la expresión regular `^(active|matched|returned)$`. Si una publicación fue marcada como `rejected` (por los triggers) o tiene otro estado de revisión, la base de datos bloquea cualquier intento de actualización de la misma (incluso si solo se edita el título). Actualizar la expresión regular en `.validate` de `status` para incluir todos los estados reales del sistema (ej. `^(active|matched|returned|rejected|pending)$`).
+    1.  **Constante de Tolerancia:** Definir una constante `LOCATION_TOLERANCE_METERS = 50` (50 metros).
+    2.  **Modificación de la Condición:** Modificar la lógica que decide si un post es rechazado. En lugar de evaluar estrictamente `distance <= center.radius`, la evaluación debe ser obligatoriamente: `distance <= (center.radius + LOCATION_TOLERANCE_METERS)`.
+    3.  **Desactivación de Polígonos Estrictos:** Si la validación actual está utilizando el array de polígonos (`boundaries`) para dictaminar el `status: rejected`, comentar/eliminar esa evaluación específica para este trigger y usar **únicamente** la distancia Haversine desde el `center.coordinates` con la tolerancia añadida. Los polígonos tienen aristas matemáticas exactas que no perdonan errores de milímetros.
+    4.  **Logging Claro:** Añadir un `functions.logger.info` que imprima la distancia calculada vs el radio permitido para facilitar la depuración si vuelve a fallar.
