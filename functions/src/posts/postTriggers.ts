@@ -13,20 +13,25 @@ const LOCATION_TOLERANCE_METERS = 50;
 
 // Cache para minimizar lecturas a DB en triggers de alta frecuencia
 const centersCache: Map<string, Center> = new Map();
-
-/*
-    TRIGGER: Al crear un post:
-      - Lo añade al índice /active_posts/{center_id}/{post_id} si está activo.
-      - Traduce su descripción a un idioma común para búsquedas multiidioma.
-      - Busca matches automáticamente y notifica a usuarios relevantes.
-    Ambas tareas son independientes: si la traducción o notificación fallan, el post sigue indexado.
-*/
+/**
+ * Trigger de Realtime Database v2 que se activa al crearse una nueva publicación en `/posts/{postId}`.
+ * 
+ * Este trigger ejecuta el siguiente flujo lógico seguro y atómico:
+ * 1. Validación de Integridad Geográfica (Zero Trust): Comprueba si la ubicación está dentro del geovallado del centro.
+ *    Si falla, marca la publicación como "rejected" en la base de datos con el motivo de error.
+ * 2. Indexación en Feed Activo: Si la publicación es activa y no ha sido borrada, agrega su clave en `/active_posts/{center_id}/{postId}`.
+ * 3. Traducción Semántica Asíncrona: Si la descripción existe, la traduce automáticamente al idioma base del backend (`DEFAULT_LANGUAGE`)
+ *    para posibilitar consultas de búsqueda multiidioma sin importar el idioma origen.
+ * 4. Búsqueda y Alerta Automática de Coincidencias (Smart Match): Si el post está activo, analiza de manera asíncrona
+ *    los posts contrarios y notifica por push a los usuarios que registraron reportes similares que superen el umbral de relevancia.
+ * 
+ * @param event - Evento disparado por la creación de un registro bajo `/posts/{postId}`.
+ */
 export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any) => {
     const snapshot = event.data;
     const post = snapshot.val();
     if (!post?.center_id) return null;
 
-    // 0. Validación de Integridad Geográfica (Zero Trust)
     try {
         await validatePostLocation(post);
     } catch (error: any) {
@@ -40,6 +45,7 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
 
     const tasks: Promise<any>[] = [];
 
+    // Indexar el post bajo la lista de posts activos del centro
     if (post.status === "active" && post.is_deleted === false) {
         tasks.push(
             admin.database()
@@ -48,6 +54,7 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
         );
     }
 
+    // Traducción en segundo plano para habilitar compatibilidad multiidioma en búsquedas
     if (post.description) {
         tasks.push(
             translateText(post.description, DEFAULT_LANGUAGE)
@@ -60,7 +67,7 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
         );
     }
 
-    // Añadir la búsqueda de matches a las tareas que deben completarse antes de cerrar la función
+    // Ejecutar búsqueda de coincidencias y notificar a los usuarios en paralelo
     if (post.status === "active" && post.is_deleted === false) {
         tasks.push(
             notifyMatchesForNewPost(event.params.postId, post).catch((error: any) => {
@@ -69,16 +76,21 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
         );
     }
 
-    // Ahora Firebase esperará a que TODO (índice, traducción y matches) termine
     await Promise.all(tasks);
     return null;
 });
 
-/*
-    TRIGGER: Mantiene el índice /active_posts/{center_id}/{post_id} sincronizado.
-    Cuando un post cambia de estado (matched, returned) o se borra lógicamente,
-    se elimina del índice. Así getFilteredFeed solo escanea posts activos.
-*/
+/**
+ * Trigger de Realtime Database v2 que se activa al actualizarse una publicación en `/posts/{postId}`.
+ * 
+ * Realiza las siguientes sincronizaciones de consistencia:
+ * 1. Actualización de Índices de Feed: Si la publicación pasa a inactiva o borrada, se elimina de `/active_posts`.
+ *    Si cambia de inactiva a activa, se vuelve a indexar.
+ * 2. Sincronización Denormalizada: Si el autor cambia el título o la imagen del objeto, propaga estos metadatos
+ *    a todas las sesiones de chat abiertas vinculadas a esta publicación para mantener la consistencia en el Feed de Chats del Frontend.
+ * 
+ * @param event - Evento disparado por la actualización del registro.
+ */
 export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any) => {
     const before = event.data.before.val();
     const after = event.data.after.val();
@@ -86,12 +98,12 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
 
     const tasks: Promise<any>[] = [];
 
-    // 1. Mantener el índice /active_posts sincronizado
+    // Mantener el índice de publicaciones activas sincronizado para el feed de búsqueda
     const indexRef = admin.database().ref(`active_posts/${after.center_id}/${event.params.postId}`);
     const isActive = after.status === "active" && after.is_deleted === false;
     tasks.push(isActive ? indexRef.set(after.created_at) : indexRef.remove());
 
-    // 2. Sincronizar cambios de título o imagen con los chats abiertos para este post
+    // Detectar cambios en título o imagen para propagar metadatos a chats existentes
     const titleChanged = before?.title !== after?.title;
     const imageChanged = (before?.imageUrl !== after?.imageUrl) || (before?.postImageUrl !== after?.postImageUrl);
 
@@ -103,6 +115,13 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
     return null;
 });
 
+/**
+ * Sincroniza y propaga los metadatos de una publicación hacia todos sus chats activos asociados.
+ * 
+ * @param postId - Identificador único de la publicación.
+ * @param title - Nuevo título a propagar.
+ * @param imageUrl - Nueva URL de imagen a propagar.
+ */
 async function syncPostMetadataToChats(postId: string, title: string, imageUrl: string) {
     const chatsQuery = await admin.database()
         .ref("chats")
@@ -122,10 +141,14 @@ async function syncPostMetadataToChats(postId: string, title: string, imageUrl: 
     return admin.database().ref().update(updates);
 }
 
-/*
-    TRIGGER: Limpia el índice /active_posts cuando un post se borra físicamente,
-    evitando entradas huérfanas que apunten a posts ya inexistentes.
-*/
+/**
+ * Trigger de Realtime Database v2 que se activa al eliminarse físicamente una publicación en `/posts/{postId}`.
+ * 
+ * Elimina de manera definitiva la clave del post de la ruta `/active_posts/{center_id}/{postId}` para evitar
+ * la existencia de registros huérfanos que apunten a documentos eliminados físicamente.
+ * 
+ * @param event - Evento disparado por la eliminación del registro.
+ */
 export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any) => {
     const before = event.data.val();
     if (!before?.center_id) return null;
@@ -135,30 +158,31 @@ export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any
         .remove();
 });
 
-/*
-    TRIGGER: Busca matches automáticamente cuando se crea un nuevo post activo
-    y notifica a los usuarios de los posts que coinciden.
-    
-    Flujo:
-    1. El nuevo post se crea y activa en Firebase
-    2. Se buscan posts activos del tipo opuesto en el mismo centro
-    3. Se calcula relevancia por categoría y similitud de descripción
-    4. Se filtra por umbral mínimo de relevancia (score >= 1.5)
-    5. Se notifica a usuarios de los top 5 posts con mejor score
-    
-    IMPORTANTE: Solo se ejecuta cuando el post YA ESTÁ GUARDADO en Firebase.
-    Esto evita notificaciones sobre posts que nunca se materializaron.
-*/
+/**
+ * Realiza una búsqueda automática de coincidencias para una publicación y notifica a los usuarios con reportes compatibles.
+ * 
+ * Algoritmo del Smart Matcher:
+ * 1. Identifica el tipo de publicación opuesto (ej. si el nuevo post es de tipo 'found', busca publicaciones 'lost').
+ * 2. Carga concurrently el detalle de todos los reportes activos del tipo opuesto en el mismo centro.
+ * 3. Traduce los términos de descripción del nuevo post al idioma común del backend para comparar semánticamente.
+ * 4. Puntuación de Relevancia (Scoring):
+ *    - Base de `1.0` si coincide en categoría y tipo opuesto.
+ *    - Suma `0.5` puntos por cada coincidencia de palabra clave en la descripción del post objetivo.
+ *    - Filtro de Umbral: Solo conserva coincidencias con un `score >= 1.5` (misma categoría + al menos 1 coincidencia textual).
+ * 5. Envía una notificación push a los autores de las 5 mejores coincidencias sugeridas informando sobre el nuevo post.
+ * 
+ * @param postId - Identificador único de la publicación recién registrada.
+ * @param newPost - Objeto que contiene las propiedades completas del reporte.
+ */
 async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<void> {
     try {
-        // Validar que sea un post activo y tenga datos suficientes
         if (newPost.status !== "active" || newPost.is_deleted || !newPost.center_id) {
             return;
         }
 
         const targetType = newPost.type === "found" ? "lost" : "found";
 
-        // Obtener IDs de posts activos del tipo opuesto
+        // Obtener la lista de posts activos en el centro
         const activePostsSnapshot = await admin
             .database()
             .ref(`active_posts/${newPost.center_id}`)
@@ -168,13 +192,13 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
 
         const activePostIds = Object.keys(activePostsSnapshot.val());
 
-        // Cargar posts activos concurrentemente
+        // Cargar los posts de forma paralela
         const postPromises = activePostIds.map((id) =>
             admin.database().ref(`posts/${id}`).once("value")
         );
         const postSnapshots = await Promise.all(postPromises);
 
-        // Preparar términos de búsqueda del nuevo post
+        // Preparar y traducir los términos de coincidencia
         let searchTerms = `${newPost.color || ""} ${newPost.description || ""}`.trim();
         let searchWords: string[] = [];
 
@@ -187,21 +211,19 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
             }
         }
 
-        // Filtrar y calificar matches
+        // Evaluar compatibilidad de reportes y scoring
         const potentialMatches: { userId: string; score: number }[] = [];
 
         for (const snap of postSnapshots) {
             if (!snap.exists()) continue;
             const existingPost = snap.val();
 
-            // Solo matches del tipo opuesto, misma categoría, activos y no borrados
             if (existingPost.type === targetType && existingPost.category === newPost.category && 
                 existingPost.status === "active" && !existingPost.is_deleted && existingPost.user_id) {
                 
                 let score = 1.0;
                 const targetDesc = existingPost.translated_description || existingPost.description?.toLowerCase() || "";
 
-                // Scoring por palabras clave
                 if (searchWords.length > 0 && targetDesc) {
                     let matchCount = 0;
                     for (const word of searchWords) {
@@ -210,8 +232,7 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
                     score += matchCount * 0.5;
                 }
 
-                // FIX CRÍTICO #3: Solo notificar si el score es lo suficientemente alto
-                // score >= 1.5 significa: categoría correcta + al menos 1 palabra coincide
+                // Umbral mínimo de relevancia: Filtra emparejamientos débiles de categorías genéricas
                 if (score >= 1.5) {
                     potentialMatches.push({
                         userId: existingPost.user_id,
@@ -221,17 +242,15 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
             }
         }
 
-        // Notificar a usuarios de los top 5 matches
+        // Ordenar coincidencias y tomar las 5 más relevantes
         const topMatches = potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5);
 
-        // FIX CRÍTICOS #1 y #2: 
-        // - Enviamos los datos del NUEVO post (postId, newPost.title) al dueño del post ANTIGUO
-        // - Esto asegura que cuando el usuario toca la notificación, ve el objeto que acaba de publicarse
+        // Enviar notificaciones push a los propietarios de posts anteriores informando sobre el nuevo post
         for (const match of topMatches) {
             try {
                 await notifyMultipleUsersOfMatch([match.userId], {
-                    id: postId,                    // ID del NUEVO post (el que acaba de crearse)
-                    title: newPost.title,          // Título del NUEVO post
+                    id: postId,
+                    title: newPost.title,
                     description: newPost.description,
                     photo_url: newPost.photo_url || ""
                 }, match.score);
@@ -246,12 +265,21 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
 
     } catch (error) {
         console.error(`Error en búsqueda de matches para nuevo post ${postId}:`, error);
-        // No lanzar error para no interrumpir el flujo de creación del post
     }
 }
 
 /**
- * Valida si la ubicación de un post está dentro de los límites del centro.
+ * Valida de forma rigurosa si las coordenadas geográficas de un reporte pertenecen al radio de acción del centro universitario.
+ * 
+ * Implementa geovallado a nivel de base de datos comparando las coordenadas mediante la distancia Haversine.
+ * Incluye un margen de tolerancia de 50 metros para equilibrar la precisión de punto flotante y la fidelidad del hardware GPS.
+ * 
+ * @param post - Objeto que contiene las coordenadas y datos geográficos del reporte a validar.
+ * @throws {HttpsError}
+ *   - 'invalid-argument': Si faltan datos geográficos.
+ *   - 'not-found': Si el centro especificado no está registrado en base de datos.
+ *   - 'internal': Si el centro carece de ubicación de configuración en DB.
+ *   - 'out-of-range': Si la distancia calculada excede el radio permitido sumado al margen de tolerancia.
  */
 async function validatePostLocation(post: any): Promise<void> {
     const { center_id, coords } = post;
@@ -271,23 +299,12 @@ async function validatePostLocation(post: any): Promise<void> {
 
     const { location, radius_meters } = centerData;
 
-    // DESACTIVADO POR ROADMAP: Los polígonos tienen aristas matemáticas exactas que no perdonan errores
-    // de punto flotante o GPS. Usamos únicamente la distancia Haversine + tolerancia de 50m.
-    /*
-    if (boundaries && boundaries.length > 0) {
-        if (!isPointInPolygon(coords, boundaries)) {
-            throw new HttpsError("out-of-range", I18N_STRINGS.errors.out_of_bounds_location);
-        }
-        return; // Si pasa el polígono, es suficiente
-    }
-    */
-
     if (!location || location.lat === undefined || location.lng === undefined) {
         console.error(`ERROR CRÍTICO: El centro ${center_id} no tiene ubicación configurada en DB.`);
         throw new HttpsError("internal", I18N_STRINGS.errors.center_config_error);
     }
 
-    // Validación Haversine con tolerancia de 50 metros para compensar punto flotante entre Flutter y Node.js
+    // Validación Haversine con tolerancia flexible de 50 metros para evitar falsos rechazos debido a imprecisiones de sensor GPS
     const distance = getHaversineDistance(coords.lat, coords.lng, location.lat, location.lng);
     const maxAllowedDistance = radius_meters + LOCATION_TOLERANCE_METERS;
 

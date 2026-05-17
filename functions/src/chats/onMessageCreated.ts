@@ -3,19 +3,28 @@ import { admin } from "../shared/firebase";
 import { getNotificationString } from "../shared/i18n";
 import { SupportedLanguage } from "../shared/types";
 
-/*
-    TRIGGER: Al crear un mensaje:
-      - Actualiza el nodo padre del chat (/chats/{chatId}) con el último mensaje y su timestamp.
-      - Actualiza el nodo índice del usuario (/user_chats/{uid}/{chatId}) con el timestamp para reflejar cambios en tiempo real.
-      - Envía notificaciones push a todos los miembros del chat (excepto el remitente)
-        que tengan push_notifications habilitado en su perfil.
-    Esto permite ordenar la bandeja de entrada sin descargar la colección completa de mensajes.
-*/
+/**
+ * Trigger de Realtime Database que se ejecuta al crearse un nuevo mensaje en la ruta `/messages/{chatId}/{messageId}`.
+ * 
+ * Este trigger realiza las siguientes acciones de forma atómica y asíncrona:
+ * 1. Valida que el mensaje contenga el texto y el timestamp correspondientes.
+ * 2. Trunca el texto del mensaje a un máximo de 40 caracteres para almacenarlo como vista previa en el chat padre.
+ * 3. Actualiza de manera atómica (`update` en RTDB):
+ *    - El nodo del chat padre (`/chats/{chatId}`) con el texto abreviado y la hora del último mensaje.
+ *    - El índice de chats de cada miembro (`/user_chats/{memberId}/{chatId}`) para ordenar la bandeja de entrada en tiempo real.
+ * 4. Envía notificaciones push de forma asíncrona a todos los miembros del chat, excluyendo al remitente del mensaje:
+ *    - Recupera las preferencias del usuario (`settings`) para validar si tiene habilitadas las notificaciones push.
+ *    - Identifica el idioma preferido del destinatario para resolver el título localizado ("new_message_title") a través de `getNotificationString`.
+ *    - Envía la notificación en segundo plano a todos los tokens FCM registrados (`/users/{memberId}/fcm_tokens`).
+ *    - Realiza una limpieza automática eliminando tokens de registro inválidos (`messaging/invalid-registration-token`).
+ * 
+ * @param event - Evento disparado por Realtime Database al crear un nodo bajo `/messages/{chatId}/{messageId}`.
+ */
 export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}", async (event: any) => {
     const snapshot = event.data;
     const message = snapshot.val();
 
-    // Validar que exista el mensaje y tenga los campos requeridos
+    // Validar la integridad del mensaje y sus campos obligatorios
     if (!message?.text || message.timestamp === undefined) {
         return null;
     }
@@ -23,76 +32,76 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
     const { chatId } = event.params;
     const senderId = message.sender_id;
 
-    // Truncar el mensaje a 40 caracteres si es necesario
+    // Truncar la vista previa del mensaje para no sobrecargar el nodo principal del chat
     let lastMessage = message.text;
     if (lastMessage.length > 40) {
         lastMessage = lastMessage.substring(0, 40) + "...";
     }
 
     try {
-        // 1. Obtener los miembros del chat
+        // Recuperar los miembros actuales del chat
         const chatSnap = await admin.database().ref(`chats/${chatId}/members`).once("value");
         if (!chatSnap.exists()) {
-            return null; // No hay miembros registrados
+            return null;
         }
 
-        const members = chatSnap.val(); // { uid: true, ... }
+        const members = chatSnap.val();
         const memberIds = Object.keys(members);
 
-        // 2. Preparar actualización atómica múltiple (Mejora de rendimiento y tiempo real)
+        // Preparar la actualización atómica múltiple en Realtime Database
         const updates: any = {};
         
-        // A) Actualizar el chat padre
+        // Actualizar el nodo principal del chat con la información del último mensaje enviado
         updates[`chats/${chatId}/last_message`] = lastMessage;
         updates[`chats/${chatId}/last_message_time`] = message.timestamp;
 
-        // B) Actualizar el índice de la bandeja de cada miembro para el tiempo real del Frontend
+        // Actualizar el índice temporal de chats de cada usuario para ordenar sus bandejas de entrada en tiempo real
         for (const memberId of memberIds) {
             updates[`user_chats/${memberId}/${chatId}`] = message.timestamp;
         }
 
-        // Ejecutar todas las actualizaciones a la vez
+        // Ejecutar las actualizaciones de forma atómica para conservar la consistencia de datos
         await admin.database().ref().update(updates);
 
-        // 3. Enviar notificaciones push a los miembros del chat
+        // Enviar notificaciones push asíncronas a los participantes (excluyendo al emisor del mensaje)
         try {
-            // Para cada miembro (excepto el remitente), enviar notificación si lo tiene habilitado
             const notificationPromises = memberIds
-                .filter(memberId => memberId !== senderId) // Excluir al remitente
+                .filter(memberId => memberId !== senderId)
                 .map(async (memberId) => {
                     try {
-                        // Verificar si el usuario tiene push_notifications habilitado y su idioma
+                        // Obtener los ajustes de notificación e idioma de preferencia del destinatario
                         const userSettingsSnap = await admin.database()
                             .ref(`users/${memberId}/settings`)
                             .once("value");
                         const settings = userSettingsSnap.val() || {};
 
                         if (settings.push_notifications !== true) {
-                            return; // Usuario no tiene notificaciones habilitadas
+                            return;
                         }
 
+                        // Internacionalización (i18n): Obtener la cadena en el idioma correspondiente (es, ca, en)
                         const userLang: SupportedLanguage = settings.language || "en";
                         const notificationTitle = getNotificationString("new_message_title", userLang);
 
-                        // Obtener todos los tokens FCM del usuario
+                        // Consultar los tokens de Firebase Cloud Messaging (FCM) registrados por el usuario
                         const fcmTokensSnap = await admin.database()
                             .ref(`users/${memberId}/fcm_tokens`)
                             .once("value");
 
                         if (!fcmTokensSnap.exists()) {
-                            return; // Usuario no tiene tokens registrados
+                            return;
                         }
 
                         const fcmTokens = Object.keys(fcmTokensSnap.val());
 
-                        // Enviar notificación a cada token
+                        // Transmitir la notificación a todos los dispositivos del usuario de forma concurrente
                         return Promise.all(
                             fcmTokens.map((token) =>
                                 admin.messaging().send({
                                     token: token,
                                     notification: {
                                         title: notificationTitle,
-                                        body: message.text.substring(0, 100) // Limitar a 100 caracteres para notificación
+                                        body: message.text.substring(0, 100) // Limitar la vista en la barra de notificaciones
                                     },
                                     data: {
                                         chatId: chatId,
@@ -100,7 +109,7 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                                     }
                                 }).catch((error) => {
                                     console.warn(`Error enviando notificación al token ${token}:`, error);
-                                    // Opcionalmente, eliminar tokens inválidos
+                                    // Limpieza de tokens obsoletos o inválidos para liberar almacenamiento
                                     if (error.code === "messaging/invalid-registration-token") {
                                         return admin.database()
                                             .ref(`users/${memberId}/fcm_tokens/${token}`)
@@ -112,23 +121,21 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                         );
                     } catch (memberError) {
                         console.error(`Error procesando notificaciones para usuario ${memberId}:`, memberError);
-                        // No interrumpir el flujo principal si falla para un miembro
                         return null;
                     }
                 });
 
-            // Esperar a que todas las notificaciones se envíen (sin bloquear el resultado)
+            // Resolver todas las promesas de envío sin interrumpir la ejecución del trigger
             await Promise.all(notificationPromises).catch((error) => {
-                console.error("Error en el envío de notificaciones:", error);
+                console.error("Error en el envío masivo de notificaciones:", error);
             });
         } catch (notificationError) {
-            console.error(`Error en el sistema de notificaciones para chat ${chatId}:`, notificationError);
-            // No interrumpir el flujo si falla el sistema de notificaciones
+            console.error(`Error en el subsistema de notificaciones del chat ${chatId}:`, notificationError);
         }
 
         return null;
     } catch (error) {
-        console.error(`Error updating chat ${chatId}:`, error);
+        console.error(`Error al actualizar el chat ${chatId}:`, error);
         return null;
     }
 });

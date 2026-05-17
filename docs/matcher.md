@@ -53,4 +53,8 @@ final result = await callable.call({
 ```
 
 ## Estado de Calidad
-La optimización por `/active_posts` ya está implementada. Lo pendiente no es rehacer el matcher, sino añadir tests automatizados para los casos base: coincidencia exacta, coincidencia por palabra traducida y respuesta vacía cuando no hay candidatos.
+
+La optimización mediante el escaneo del índice secundario `/active_posts` está plenamente implementada. Se han diseñado y validado con éxito las pruebas automatizadas en `/functions/tests/unit/checkPotentialMatches.test.js` utilizando Jest. Los tests cubren exhaustivamente:
+1. **Coincidencia Exacta:** Validación del incremento de puntuación base (+1.0) ante categoría coincidente y tipo opuesto.
+2. **Coincidencia Semántica por Palabra Traducida:** Incremento dinámico de score (+0.5 por término coincidente) comparando palabras clave del formulario de reporte contra la descripción traducida en español (`translated_description`).
+3. **Respuesta Vacía:** Comprobación del correcto descarte semántico y geográfico de candidatos incompatibles o inactivos.

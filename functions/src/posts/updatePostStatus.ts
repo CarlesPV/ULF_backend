@@ -2,6 +2,26 @@ import * as functions from "firebase-functions";
 import { admin } from "../shared/firebase";
 import { I18N_STRINGS } from "../shared/i18n";
 
+/**
+ * Actualiza el estado de una publicación (ej. de 'active' a 'resolved').
+ * 
+ * Esta función de Cloud Call implementa un control de acceso estricto:
+ * 1. Valida que el usuario solicitante esté autenticado y cuente con correo institucional verificado.
+ * 2. Recupera la publicación desde Realtime Database y verifica su existencia.
+ * 3. Valida la propiedad del post: solo el autor original del reporte está autorizado para modificar su estado.
+ * 4. Actualiza el estado (`status`) y el campo temporal `updated_at`.
+ * 
+ * @param request - Objeto de petición que contiene los datos de la actualización:
+ *   - postId: Identificador único de la publicación a modificar.
+ *   - newStatus: Nuevo estado a asignar (ej. "active", "resolved", "claimed").
+ * 
+ * @returns Un objeto que indica el éxito de la modificación.
+ * 
+ * @throws {HttpsError}
+ *   - 'unauthenticated': Si el usuario no está autenticado o su correo no está verificado.
+ *   - 'not-found': Si la publicación especificada no existe en la base de datos.
+ *   - 'permission-denied': Si el usuario autenticado no es el autor original de la publicación.
+ */
 export const updatePostStatus = functions.https.onCall(async (request) => {
     const { postId, newStatus } = request.data;
     
@@ -16,6 +36,7 @@ export const updatePostStatus = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("not-found", I18N_STRINGS.errors.item_not_found);
     }
     
+    // Verificar estrictamente la autoría de la publicación antes de permitir cambios
     if (snapshot.val().user_id !== request.auth.uid) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unauthorized);
     }
