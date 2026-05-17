@@ -3,3 +3,5 @@ node_modules/
 package-lock.json
 functions/lib/
 functions/coverage/
+firebase-debug.log
+database-debug.log
