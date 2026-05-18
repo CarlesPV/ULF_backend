@@ -54,7 +54,7 @@ Trigger notifica → Post disponible para buscar
 - `match_found_body` (es/en/ca)
 
 ### 5. ✅ Tests De Verificación
-**Archivo:** `functions/test/matchNotifications.test.js`
+**Archivo:** `functions/tests/unit/matchNotifications.test.js`
 
 - Tests para envío a múltiples dispositivos
 - Verificación de eliminación de tokens inválidos
@@ -142,7 +142,7 @@ Para verificar localmente:
 
 ```bash
 cd functions
-npm run test -- tests/unit/matchNotifications.test.js
+npm run test:unit -- tests/unit/matchNotifications.test.js
 ```
 
 ## Archivos Modificados

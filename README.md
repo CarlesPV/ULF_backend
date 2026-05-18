@@ -29,11 +29,23 @@ npx ts-node seed_db.ts
 ```
 
 ### 2. Desarrollo y Pruebas
-Para ejecutar la suite de pruebas unitarias:
+Para ejecutar solo la suite de pruebas unitarias:
 ```bash
 cd functions
 npm install
-npm test
+npm run test:unit
+```
+
+Para ejecutar los tests de integración con Firebase Emulator Suite se necesita **Java 21**:
+```bash
+cd functions
+npm run test:integration
+```
+
+Para validar todo el backend antes de una PR o despliegue:
+```bash
+cd functions
+npm run test:all
 ```
 
 ### 3. Despliegue
@@ -48,6 +60,7 @@ firebase deploy --only database,functions,storage
 - [Esquema de Datos](docs/database.schema.md)
 - [Reglas de Seguridad (DB)](docs/database.rules.md)
 - [Reglas de Storage](docs/storage.rules.md)
+- [Testing Backend](docs/testing.md)
 - [🔔 Sistema de Notificaciones de Matches](docs/NOTIFICATION_IMPLEMENTATION.md) **← NUEVO**
 
 ## 🔔 Notificaciones de Matches (Nuevo en Mayo 2026)

@@ -11,7 +11,7 @@ Fecha de revisión: 17 de mayo de 2026.
 | RF13 Gestión de estados | Implementado | `updatePostStatus` valida estados y limpia índices. |
 | Matcher optimizado | Implementado | `checkPotentialMatches` usa `/active_posts/{center_id}` y recupera posts activos en paralelo. |
 | **Notificaciones de Matches** | **Implementado** | **Nueva utilidad `shared/notifications.ts` + triggers en `postTriggers.ts` y `checkPotentialMatches`** |
-| Tests automatizados | Implementado | Suite de tests robusta con Jest en `functions/tests/unit/` (16 suites de tests, 105 tests pasando exitosamente). |
+| Tests automatizados | Implementado | Suite unitaria con Jest en `functions/tests/unit/` (16 suites, 105 tests) y suite de integración en `functions/tests/integration/` con Firebase Emulator Suite (5 suites, 11 tests). |
 | Internacionalización | Implementado | Traducción automática de posts y labels de Vision API al idioma base común (`es`); constantes i18n para notificaciones localizadas (`es`, `en`, `ca`). |
 | Validación de Geovallado | Implementado | Validación server-side con la fórmula de Haversine y una tolerancia de 50 metros en `validatePostLocation`. |
 
@@ -21,6 +21,7 @@ Fecha de revisión: 17 de mayo de 2026.
 3. **Internacionalización:** Soporte completo para traducciones automáticas en el backend a través de Google Cloud Translation API y diccionarios centralizados.
 4. **Notificaciones de Matches:** Sistema completo de notificaciones FCM para alertar usuarios en tiempo real cuando se encuentran coincidencias de objetos, con auto-limpieza de tokens inactivos.
 5. **Geovallado Seguro:** Robustez geográfica mediante la fórmula matemática de Haversine con tolerancia flexible frente a derivas del GPS.
+6. **Tests de Integración:** Validación de flujos críticos con Firebase Emulator Suite para Auth, Realtime Database y Functions, separada de los tests unitarios.
 
 ## Próximas Fases
 1. **Auditoría de rendimiento:** Monitorear latencias y optimizaciones adicionales al escalar a más campus universitarios.
