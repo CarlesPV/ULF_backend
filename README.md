@@ -81,5 +81,9 @@ Usuario B publica "Encontré llavero"
 - [Implementación Completa](docs/match-notifications.md)
 - [Guía de Integración](docs/NOTIFICATION_INTEGRATION_GUIDE.md)
 
+## Licencia
+
+Este proyecto está bajo la Licencia MIT. Para más detalles, consulta el archivo [LICENSE](LICENSE).
+
 ---
 *Desarrollado para el proyecto final de grado - UAB.*
