@@ -22,8 +22,8 @@ export const onImageUploaded = onObjectFinalized(async (event) => {
     const filePath = event.data.name; 
     const contentType = event.data.contentType;
 
-    // Cláusula de guarda (Early Exit): Evitar interferencias con imágenes pre-procesadas por el cliente
-    if (contentType === "image/webp" || /_\d+/.test(path.basename(filePath))) {
+    // Cláusula de guarda (Early Exit): Evitar interferencias con imágenes de publicaciones (posts) pre-procesadas por el cliente
+    if (filePath.startsWith("posts/") && (contentType === "image/webp" || /_\d+/.test(path.basename(filePath)))) {
         return;
     }
 
