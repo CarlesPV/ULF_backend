@@ -38,7 +38,8 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
         console.warn(`Post ${event.params.postId} rechazado por ubicación inválida.`);
         await snapshot.ref.update({ 
             status: "rejected", 
-            rejection_reason: error.message || "out_of_bounds" 
+            rejection_reason: error.message || "out_of_bounds",
+            updated_at: admin.database.ServerValue.TIMESTAMP 
         });
         return null;
     }
@@ -111,9 +112,40 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
         tasks.push(syncPostMetadataToChats(event.params.postId, after.title, after.postImageUrl || after.imageUrl));
     }
 
+    // Gestión de archivos huérfanos: Si la URL de imagen ha cambiado, eliminamos la anterior física de Storage
+    const oldImageUrl = before?.imageUrl || before?.postImageUrl;
+    const newImageUrl = after?.imageUrl || after?.postImageUrl;
+    if (oldImageUrl && newImageUrl && oldImageUrl !== newImageUrl) {
+        tasks.push(deleteStorageFileFromUrl(oldImageUrl));
+    }
+
     await Promise.all(tasks);
     return null;
 });
+
+/**
+ * Elimina físicamente un archivo de Firebase Storage a partir de su URL pública.
+ * 
+ * @param url - URL pública de Firebase Storage del archivo a eliminar.
+ */
+async function deleteStorageFileFromUrl(url: string): Promise<void> {
+    if (!url || !url.startsWith("https://firebasestorage.googleapis.com")) return;
+    try {
+        const match = url.match(/\/o\/([^?#]+)/);
+        if (match && match[1]) {
+            const storagePath = decodeURIComponent(match[1]);
+            const bucket = admin.storage().bucket();
+            const file = bucket.file(storagePath);
+            const [exists] = await file.exists();
+            if (exists) {
+                await file.delete();
+                logger.info(`[Storage Cleanup] Imagen huérfana eliminada físicamente: ${storagePath}`);
+            }
+        }
+    } catch (error) {
+        logger.error(`[Storage Cleanup Error] Fallo al eliminar imagen anterior (${url}):`, error);
+    }
+}
 
 /**
  * Sincroniza y propaga los metadatos de una publicación hacia todos sus chats activos asociados.
