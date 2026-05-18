@@ -67,7 +67,7 @@
                 ],
                 "$user_id": {
                     ".read": "auth != null && auth.token.email_verified === true && (auth.uid === $user_id || root.child('posts').child($post_id).child('user_id').val() === auth.uid)",
-                    ".write": "auth != null && auth.token.email_verified === true && auth.uid === $user_id",
+                    ".write": "auth != null && auth.token.email_verified === true && auth.uid === $user_id && root.child('posts').child($post_id).exists() && root.child('posts').child($post_id).child('user_id').val() !== auth.uid",
                     ".validate": "newData.hasChildren(['timestamp']) && newData.child('timestamp').isNumber() && newData.child('timestamp').val() <= now"
                 }
             }
