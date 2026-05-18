@@ -20,14 +20,15 @@ import * as fs from "fs";
  */
 export const onImageUploaded = onObjectFinalized(async (event) => {
     const filePath = event.data.name; 
+    const isOptimized = event.data.metadata && event.data.metadata.optimized === "true";
 
-    // Filtrar imágenes de publicaciones que no han sido convertidas aún
-    if (filePath.startsWith("posts/") && event.data.contentType !== "image/webp") {
+    // Filtrar imágenes de publicaciones que no han sido convertidas por el sistema
+    if (filePath.startsWith("posts/") && !isOptimized) {
         return handlePostImage(event);
     }
 
-    // Filtrar fotos de perfil en formato original
-    if (filePath.startsWith("users/") && filePath.endsWith("/profile_image") && event.data.contentType !== "image/webp") {
+    // Filtrar fotos de perfil en formato original que no han sido convertidas por el sistema
+    if (filePath.startsWith("users/") && filePath.endsWith("/profile_image") && !isOptimized) {
         return handleProfileImage(event);
     }
 
@@ -70,7 +71,10 @@ async function handleProfileImage(event: any) {
             destination,
             metadata: { 
                 contentType: "image/webp",
-                cacheControl: "public, max-age=3600, s-maxage=3600"
+                cacheControl: "public, max-age=3600, s-maxage=3600",
+                metadata: {
+                    optimized: "true"
+                }
             }
         });
 
@@ -136,7 +140,10 @@ async function handlePostImage(event: any) {
             destination,
             metadata: {
                 contentType: "image/webp",
-                cacheControl: "public, max-age=3600, s-maxage=3600"
+                cacheControl: "public, max-age=3600, s-maxage=3600",
+                metadata: {
+                    optimized: "true"
+                }
             }
         });
 

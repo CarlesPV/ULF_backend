@@ -21,12 +21,13 @@ service firebase.storage {
     // Imágenes en chats
     match /chats/{chatId}/{messageId} {
       allow read: if isAuthenticated();
-      // Nota: Debido a las limitaciones de Firebase Storage para consultar Realtime Database directamente,
-      // la validación de pertenencia al chat se realiza a nivel de aplicación (Functions/Client).
-      // Aquí aseguramos autenticación, límite de 5MB y tipo de archivo de imagen.
+      // Asegurar autenticación, tamaño menor a 5MB, tipo de imagen y que el usuario sea miembro del chat.
+      // Dado que Storage rules no puede leer Realtime Database, la validación de pertenencia en Storage
+      // se realiza mediante una consulta a Firestore en caso de persistir allí la información de chats/miembros.
       allow write: if isAuthenticated()
                    && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
+                   && request.resource.contentType.matches('image/.*')
+                   && firestore.exists(/databases/(default)/documents/chats/$(chatId)/members/$(request.auth.uid));
     }
 
     // Fotos de perfil

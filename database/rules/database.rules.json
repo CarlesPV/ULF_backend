@@ -100,7 +100,7 @@
                 ".read": "auth != null && auth.token.email_verified === true && root.child('chats').child($chat_id).child('members').child(auth.uid).val() === true",
                 "$message_id": {
                     ".write": "auth != null && auth.token.email_verified === true && root.child('chats').child($chat_id).child('members').child(auth.uid).val() === true && !data.exists()",
-                    ".validate": "newData.hasChildren(['id', 'sender_id', 'text', 'timestamp', 'type']) && newData.child('sender_id').val() === auth.uid && newData.child('text').isString() && newData.child('timestamp').isNumber() && newData.child('timestamp').val() <= now && newData.child('type').val().matches(/^(text|image)$/) && (newData.child('type').val() === 'image' ? newData.child('imageUrl').isString() : !newData.child('imageUrl').exists())"
+                    ".validate": "newData.hasChildren(['id', 'sender_id', 'timestamp', 'type']) && newData.child('sender_id').val() === auth.uid && newData.child('timestamp').isNumber() && newData.child('timestamp').val() <= now && newData.child('type').val().matches(/^(text|image)$/) && (newData.child('type').val() === 'image' ? newData.child('imageUrl').isString() && (!newData.child('text').exists() || newData.child('text').isString()) : newData.child('text').isString() && !newData.child('imageUrl').exists())"
                 }
             }
         }

@@ -91,7 +91,7 @@ export interface Center {
 export interface Message {
     id: string;
     sender_id: string;
-    text: string;
+    text?: string;
     timestamp: number;
     type: "text" | "image";
     imageUrl?: string;

@@ -4,7 +4,7 @@ import { admin } from "../shared/firebase";
 import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { notifyMultipleUsersOfMatch } from "../shared/notifications";
-import { getHaversineDistance } from "../shared/utils";
+import { getHaversineDistance, deleteFileFromStorageUrl } from "../shared/utils";
 import { I18N_STRINGS } from "../shared/i18n";
 import { logger } from "firebase-functions";
 
@@ -106,10 +106,23 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
 
     // Detectar cambios en título o imagen para propagar metadatos a chats existentes
     const titleChanged = before?.title !== after?.title;
-    const imageChanged = (before?.imageUrl !== after?.imageUrl) || (before?.postImageUrl !== after?.postImageUrl);
+    const beforeUrl = before?.postImageUrl || before?.imageUrl;
+    const afterUrl = after?.postImageUrl || after?.imageUrl;
+    const imageChanged = beforeUrl !== afterUrl;
 
     if (titleChanged || imageChanged) {
-        tasks.push(syncPostMetadataToChats(event.params.postId, after.title, after.postImageUrl || after.imageUrl));
+        tasks.push(syncPostMetadataToChats(event.params.postId, after.title, afterUrl));
+    }
+
+    // Limpieza de imágenes huérfanas:
+    // Caso A: Si cambió la imagen, borrar la antigua.
+    if (imageChanged && beforeUrl) {
+        tasks.push(deleteFileFromStorageUrl(beforeUrl));
+    }
+
+    // Caso B: Si se marcó el post como eliminado (soft delete), borrar la imagen actual.
+    if (after.is_deleted === true && before.is_deleted === false && afterUrl) {
+        tasks.push(deleteFileFromStorageUrl(afterUrl));
     }
 
     await Promise.all(tasks);
@@ -154,9 +167,22 @@ export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any
     const before = event.data.val();
     if (!before?.center_id) return null;
 
-    return admin.database()
-        .ref(`active_posts/${before.center_id}/${event.params.postId}`)
-        .remove();
+    const tasks: Promise<any>[] = [];
+
+    tasks.push(
+        admin.database()
+            .ref(`active_posts/${before.center_id}/${event.params.postId}`)
+            .remove()
+    );
+
+    // Caso C: Si se elimina físicamente la publicación, borrar su imagen de Storage.
+    const beforeUrl = before?.postImageUrl || before?.imageUrl;
+    if (beforeUrl) {
+        tasks.push(deleteFileFromStorageUrl(beforeUrl));
+    }
+
+    await Promise.all(tasks);
+    return null;
 });
 
 /**

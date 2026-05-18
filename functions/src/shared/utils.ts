@@ -1,3 +1,5 @@
+import { admin } from "./firebase";
+
 /**
  * Calcula la distancia exacta en metros entre dos coordenadas geográficas utilizando la fórmula matemática de Haversine.
  * 
@@ -30,7 +32,7 @@ export function getHaversineDistance(lat1: number, lon1: number, lat2: number, l
  * Evalúa si una coordenada geográfica se ubica en el interior de una región poligonal cerrada usando el algoritmo de Ray Casting.
  * 
  * El algoritmo proyecta un rayo horizontal desde el punto de interés y cuenta cuántas aristas interseca.
- * Un número impar de intersecciones determina que el punto se encuentra dentro de los límites del polígono.
+ * Un número impres de intersecciones determina que el punto se encuentra dentro de los límites del polígono.
  * 
  * @param point - Coordenada del punto a verificar `{ lat, lng }`.
  * @param polygon - Arreglo ordenado de coordenadas que delimitan la frontera del polígono `[{ lat, lng }]`.
@@ -47,4 +49,36 @@ export function isPointInPolygon(point: { lat: number; lng: number }, polygon: {
         if (intersect) isInside = !isInside;
     }
     return isInside;
+}
+
+/**
+ * Extrae la ruta del objeto en Storage a partir de su URL pública y lo elimina de forma asíncrona.
+ * Maneja los errores con gracia si el archivo ya no existe (404).
+ * 
+ * @param url - URL pública del archivo en Firebase Storage.
+ * @returns Promesa que resuelve a `true` si la eliminación se procesó correctamente; de lo contrario `false`.
+ */
+export async function deleteFileFromStorageUrl(url: string): Promise<boolean> {
+    if (!url) return false;
+    try {
+        const decodedUrl = decodeURIComponent(url);
+        const parts = decodedUrl.split("/o/");
+        if (parts.length < 2) return false;
+
+        const pathWithParams = parts[1];
+        const storagePath = pathWithParams.split("?")[0];
+
+        const bucket = admin.storage().bucket();
+        await bucket.file(storagePath).delete().catch((err: any) => {
+            // Código 404 indica que el archivo ya no existe, lo cual ignoramos de forma segura
+            if (err.code !== 404) {
+                console.error(`[Storage Clean] Error al borrar archivo ${storagePath}:`, err);
+            }
+        });
+        console.log(`[Storage Clean] Archivo eliminado con éxito de Storage: ${storagePath}`);
+        return true;
+    } catch (error) {
+        console.error(`[Storage Clean] Error parsing/deleting Storage file de URL: ${url}`, error);
+        return false;
+    }
 }
