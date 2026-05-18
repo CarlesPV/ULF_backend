@@ -26,6 +26,8 @@ Se ha introducido el ecosistema de Node.js/TypeScript al repositorio:
  │    ├── src/posts/                     # Reportes, estados, vistas y triggers
  │    ├── src/matcher/                   # Búsqueda de coincidencias
  │    ├── src/feed/                      # Feed filtrado por índice de activos
+ │    ├── tests/unit/                    # Tests unitarios con Jest y mocks
+ │    ├── tests/integration/             # Tests con Firebase Emulator Suite
  │    ├── package.json                   # Dependencias (firebase-admin, firebase-functions)
  │    └── tsconfig.json                  # Reglas de compilación de TypeScript
  ├── .github/workflows/deploy.yml        # Pipeline CI/CD
@@ -36,10 +38,17 @@ Se ha introducido el ecosistema de Node.js/TypeScript al repositorio:
 ## 4. Componentes Críticos Modificados
 
 ### A. CI/CD Pipeline (`deploy.yml`)
-El flujo de GitHub Actions ejecuta un paso de construcción (`npm run build`) dentro de la carpeta `/functions` antes de desplegar. El comando de despliegue es:
+El flujo de GitHub Actions separa la validación en dos jobs:
+
+| Job | Qué valida |
+| :--- | :--- |
+| `backend-unit-tests` | Compila y ejecuta Jest unitario en `/functions/tests/unit/` con mocks. |
+| `backend-integration-tests` | Instala Java 21 y ejecuta Firebase Emulator Suite contra `/functions/tests/integration/`. |
+
+En `pull_request` hacia `develop` o `master` solo se ejecutan los tests. En `push` a `develop` o `master`, el despliegue espera a que ambos jobs pasen antes de ejecutar:
 `firebase deploy --only database,functions,storage`
 
-La suite de tests unitarios robusta ya está completamente integrada y alojada en `/functions/tests/unit/` utilizando Jest. Ejecuta 105 tests unitarios que simulan de manera aislada y simulada (mocks) el comportamiento de base de datos, triggers, autenticación y notificaciones push.
+La suite unitaria contiene 105 tests. La suite de integración levanta emuladores de Auth, Realtime Database y Functions para validar flujos críticos sin tocar Firebase real.
 
 ### B. Índices en Realtime Database
 Se ha añadido la regla `.indexOn: ["is_active"]` al nodo `/centers` en `database.rules.json` para optimizar el filtrado al registrar usuarios, evitando la descarga completa de la colección.
