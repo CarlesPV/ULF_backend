@@ -32,9 +32,21 @@ export const onImageUploaded = onObjectFinalized(async (event) => {
         return handlePostImage(event);
     }
 
-    // Filtrar fotos de perfil en formato original
-    if (filePath.startsWith("users/") && filePath.endsWith("/profile_image") && event.data.contentType !== "image/webp") {
-        return handleProfileImage(event);
+    // Filtrar fotos de perfil en formato original (soporta nombres dinámicos con timestamps y webp)
+    if (filePath.startsWith("users/")) {
+        const pathParts = filePath.split("/");
+        if (pathParts.length >= 3) {
+            const userId = pathParts[1];
+            const fileName = pathParts[pathParts.length - 1];
+            const profileRegex = new RegExp(`^${userId}(_\\d+)?(\\.[a-zA-Z0-9]+)?$`);
+            if (profileRegex.test(fileName) || fileName === "profile_image") {
+                // Evitar bucles infinitos al omitir el archivo destino procesado (profile_image.webp)
+                // y evitar reprocesar la subida heredada si ya es webp
+                if (fileName !== "profile_image.webp" && !(fileName === "profile_image" && event.data.contentType === "image/webp")) {
+                    return handleProfileImage(event);
+                }
+            }
+        }
     }
 
     return null;

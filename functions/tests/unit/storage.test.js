@@ -259,4 +259,29 @@ describe("onImageUploaded trigger", () => {
             })
         });
     });
+
+    test("handleProfileImage handles dynamic filenames with timestamp and webp format", async () => {
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+        
+        const event = {
+            data: {
+                name: "users/user_abc/user_abc_1715432020.webp",
+                bucket: "test-bucket",
+                contentType: "image/webp"
+            }
+        };
+
+        await onImageUploaded(event);
+
+        expect(bucketMock.upload).toHaveBeenCalledWith(
+            expect.stringContaining("optimized_user_abc"),
+            expect.objectContaining({ 
+                destination: "users/user_abc/profile_image.webp",
+                metadata: expect.objectContaining({ 
+                    contentType: "image/webp",
+                    cacheControl: "public, max-age=3600, s-maxage=3600"
+                })
+            })
+        );
+    });
 });
