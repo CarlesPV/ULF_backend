@@ -11,15 +11,10 @@ service firebase.storage {
     match /posts/{postId}/{imageName} {
       allow read: if true;
       
-      // Permitimos la creación inicial a cualquier usuario autenticado (se procesará a WebP en handlePostImage)
-      allow create: if isAuthenticated()
-                    && request.resource.size < 5 * 1024 * 1024
-                    && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
-      
-      // Para actualización (update) exigimos que sea estrictamente formato WebP y < 3MB (comprimido)
-      allow update: if isAuthenticated()
-                    && request.resource.size < 3 * 1024 * 1024
-                    && request.resource.contentType == 'image/webp';
+      // Permitimos la creación y actualización a cualquier usuario autenticado (se procesará a WebP en handlePostImage)
+      allow create, update: if isAuthenticated()
+                            && request.resource.size < 5 * 1024 * 1024
+                            && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
                     
       // Permitimos la eliminación (la autoría final se valida en el backend y base de datos)
       allow delete: if isAuthenticated();
@@ -44,10 +39,10 @@ service firebase.storage {
     match /chats/{chatId}/{imageId} {
       allow read: if isAuthenticated();
       // Debido a limitaciones de Firebase Storage, no es posible leer Realtime Database directamente desde las reglas.
-      // Validamos autenticación, formato estricto de imagen WebP y un tamaño máximo razonable de 3MB.
+      // Validamos autenticación, formato y tamaño de imagen flexible para evitar conflictos similares de subida.
       allow write: if isAuthenticated()
-                   && request.resource.size < 3 * 1024 * 1024
-                   && request.resource.contentType == 'image/webp';
+                   && request.resource.size < 5 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
     }
   }
 }
