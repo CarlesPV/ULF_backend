@@ -6,6 +6,7 @@ import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { notifyMultipleUsersOfMatch } from "../shared/notifications";
 import { getHaversineDistance } from "../shared/utils";
 import { I18N_STRINGS } from "../shared/i18n";
+import * as functions from "firebase-functions";
 import { logger } from "firebase-functions";
 
 // Margen de tolerancia de 50 metros para compensar punto flotante y GPS (según roadmap.md)
@@ -113,9 +114,9 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
     }
 
     // Gestión de archivos huérfanos: Si la URL de imagen ha cambiado, eliminamos la anterior física de Storage
-    const oldImageUrl = before?.imageUrl || before?.postImageUrl;
-    const newImageUrl = after?.imageUrl || after?.postImageUrl;
-    if (oldImageUrl && newImageUrl && oldImageUrl !== newImageUrl) {
+    const oldImageUrl = before?.imageUrl;
+    const newImageUrl = after?.imageUrl;
+    if (oldImageUrl && oldImageUrl !== newImageUrl) {
         tasks.push(deleteStorageFileFromUrl(oldImageUrl));
     }
 
@@ -136,14 +137,11 @@ async function deleteStorageFileFromUrl(url: string): Promise<void> {
             const storagePath = decodeURIComponent(match[1]);
             const bucket = admin.storage().bucket();
             const file = bucket.file(storagePath);
-            const [exists] = await file.exists();
-            if (exists) {
-                await file.delete();
-                logger.info(`[Storage Cleanup] Imagen huérfana eliminada físicamente: ${storagePath}`);
-            }
+            await file.delete();
+            functions.logger.info(`[Storage Cleanup] Imagen huérfana eliminada físicamente: ${storagePath}`);
         }
     } catch (error) {
-        logger.error(`[Storage Cleanup Error] Fallo al eliminar imagen anterior (${url}):`, error);
+        functions.logger.error(`[Storage Cleanup Error] Fallo al eliminar imagen anterior (${url}):`, error);
     }
 }
 
