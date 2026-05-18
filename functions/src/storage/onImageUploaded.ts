@@ -20,6 +20,13 @@ import * as fs from "fs";
  */
 export const onImageUploaded = onObjectFinalized(async (event) => {
     const filePath = event.data.name; 
+    const contentType = event.data.contentType;
+
+    // Cláusula de guarda (Early Exit): Evitar interferencias con imágenes pre-procesadas por el cliente
+    if (contentType === "image/webp" || /_\d+/.test(path.basename(filePath))) {
+        return;
+    }
+
     const metadata = event.data.metadata || {};
 
     // Evitar bucles infinitos si la imagen ya fue procesada por el backend

@@ -1,3 +1,14 @@
+// ============================================================================
+// ¡IMPORTANTE! CONFIGURACIÓN DE APP CHECK EN DESARROLLO
+// Dado que el Frontend está en desarrollo y aún no tiene activo un proveedor
+// de App Check (como Play Integrity o DeviceCheck), las subidas de imágenes
+// pueden fallar con errores HTTP 403 / "Too many attempts".
+// 
+// Para evitar bloqueos durante el desarrollo local con emuladores o versiones
+// de depuración (debug), asegúrate de que en la consola de Firebase la opción:
+// "App Check > Storage" esté configurada como "Unenforced" (No obligatorio).
+// ============================================================================
+
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
