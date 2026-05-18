@@ -94,7 +94,10 @@ describe("onImageUploaded trigger", () => {
         const event = {
             data: {
                 name: "posts/post-1/image-1.webp",
-                contentType: "image/webp"
+                contentType: "image/webp",
+                metadata: {
+                    processed: "true"
+                }
             }
         };
 

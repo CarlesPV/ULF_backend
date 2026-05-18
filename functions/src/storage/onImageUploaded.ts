@@ -20,9 +20,15 @@ import * as fs from "fs";
  */
 export const onImageUploaded = onObjectFinalized(async (event) => {
     const filePath = event.data.name; 
+    const metadata = event.data.metadata || {};
 
-    // Filtrar imágenes de publicaciones que no han sido convertidas aún
-    if (filePath.startsWith("posts/") && event.data.contentType !== "image/webp") {
+    // Evitar bucles infinitos si la imagen ya fue procesada por el backend
+    if (metadata.processed === "true") {
+        return null;
+    }
+
+    // Filtrar imágenes de publicaciones (procesar nuevas subidas y actualizaciones)
+    if (filePath.startsWith("posts/")) {
         return handlePostImage(event);
     }
 
@@ -80,7 +86,8 @@ async function handleProfileImage(event: any) {
 
         await admin.database().ref(`users/${userId}`).update({
             photoUrl: publicUrl,
-            photoUpdatedAt: timestamp
+            photoUpdatedAt: timestamp,
+            updated_at: admin.database.ServerValue.TIMESTAMP
         });
 
         // Borrar la foto original en bruto para liberar espacio en disco
@@ -130,12 +137,20 @@ async function handlePostImage(event: any) {
             .toFormat("webp")
             .toFile(optimizedFilePath);
 
-        const destination = `posts/${postId}/${fileName}.webp`;
+        // Evitar nombres redundantes con doble extensión .webp.webp
+        const baseName = fileName.toLowerCase().endsWith(".webp")
+            ? fileName.substring(0, fileName.length - 5)
+            : fileName;
+        const destination = `posts/${postId}/${baseName}.webp`;
+
         await bucket.upload(optimizedFilePath, {
             destination,
             metadata: {
                 contentType: "image/webp",
-                cacheControl: "public, max-age=3600, s-maxage=3600"
+                cacheControl: "public, max-age=3600, s-maxage=3600",
+                metadata: {
+                    processed: "true"
+                }
             }
         });
 
@@ -163,10 +178,14 @@ async function handlePostImage(event: any) {
         await admin.database().ref(`posts/${postId}`).update({
             postImageUrl: publicUrl,
             imageUrl: publicUrl,
-            vision_labels: translatedLabels
+            vision_labels: translatedLabels,
+            updated_at: admin.database.ServerValue.TIMESTAMP
         });
 
-        await bucket.file(filePath).delete();
+        // Evitar borrar el archivo si es el mismo que subimos ya optimizado
+        if (filePath !== destination) {
+            await bucket.file(filePath).delete();
+        }
         console.log(`Imagen de post optimizada y analizada para ${postId}: ${publicUrl}`);
 
     } catch (error) {
