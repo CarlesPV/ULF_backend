@@ -166,7 +166,8 @@ async function handlePostImage(event: any) {
             }
         });
 
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media`;
+        const timestamp = Date.now();
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media&t=${timestamp}`;
 
         // Analizar la imagen convertida para detectar sus características visuales y clasificar el objeto
         const imageRequest = {
@@ -184,6 +185,24 @@ async function handlePostImage(event: any) {
             
             const translationText = labelDescriptions.join(", ");
             translatedLabels = await translateLabels(translationText, DEFAULT_LANGUAGE);
+        }
+
+        // Limpieza de imágenes previas (Evitar basura en Storage)
+        try {
+            const postSnapshot = await admin.database().ref(`posts/${postId}`).once("value");
+            const oldImageUrl = postSnapshot.val()?.imageUrl;
+            if (oldImageUrl && typeof oldImageUrl === "string") {
+                const matches = oldImageUrl.match(/\/o\/([^?#]+)/);
+                if (matches && matches[1]) {
+                    const oldPathDecoded = decodeURIComponent(matches[1]);
+                    if (oldPathDecoded !== destination) {
+                        await bucket.file(oldPathDecoded).delete();
+                        console.log(`Archivo antiguo de Storage eliminado con éxito: ${oldPathDecoded}`);
+                    }
+                }
+            }
+        } catch (storageError) {
+            console.error("Error al intentar limpiar la imagen antigua de Storage:", storageError);
         }
 
         // Persistir en la base de datos sincronizando los campos estandarizados del post
