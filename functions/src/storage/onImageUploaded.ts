@@ -20,15 +20,14 @@ import * as fs from "fs";
  */
 export const onImageUploaded = onObjectFinalized(async (event) => {
     const filePath = event.data.name; 
-    const isOptimized = event.data.metadata && event.data.metadata.optimized === "true";
 
-    // Filtrar imágenes de publicaciones que no han sido convertidas por el sistema
-    if (filePath.startsWith("posts/") && !isOptimized) {
+    // Filtrar imágenes de publicaciones que no han sido convertidas aún
+    if (filePath.startsWith("posts/") && event.data.contentType !== "image/webp") {
         return handlePostImage(event);
     }
 
-    // Filtrar fotos de perfil en formato original que no han sido convertidas por el sistema
-    if (filePath.startsWith("users/") && filePath.endsWith("/profile_image") && !isOptimized) {
+    // Filtrar fotos de perfil en formato original
+    if (filePath.startsWith("users/") && filePath.endsWith("/profile_image") && event.data.contentType !== "image/webp") {
         return handleProfileImage(event);
     }
 
