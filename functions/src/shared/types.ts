@@ -87,3 +87,12 @@ export interface Center {
     }[];
     is_active: boolean;
 }
+
+export interface Message {
+    id: string;
+    sender_id: string;
+    text: string;
+    timestamp: number;
+    type: "text" | "image";
+    imageUrl?: string;
+}

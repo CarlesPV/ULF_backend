@@ -10,10 +10,23 @@ service firebase.storage {
     // Objetos perdidos / encontrados
     match /posts/{postId}/{imageName} {
       allow read: if true;
-      // Permitimos subida a cualquier usuario autenticado (se procesará a WebP luego)
+      // Permitimos creación y sobrescritura de imágenes en publicaciones.
+      // Para la sobrescritura, verificamos de forma segura que el uid coincida con el dueño original guardado en los metadatos.
       allow write: if isAuthenticated()
+                   && (resource == null || resource.metadata.owner == request.auth.uid)
                    && request.resource.size < 5 * 1024 * 1024
                    && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
+    }
+
+    // Imágenes en chats
+    match /chats/{chatId}/{messageId} {
+      allow read: if isAuthenticated();
+      // Nota: Debido a las limitaciones de Firebase Storage para consultar Realtime Database directamente,
+      // la validación de pertenencia al chat se realiza a nivel de aplicación (Functions/Client).
+      // Aquí aseguramos autenticación, límite de 5MB y tipo de archivo de imagen.
+      allow write: if isAuthenticated()
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
     }
 
     // Fotos de perfil

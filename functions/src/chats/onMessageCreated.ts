@@ -24,8 +24,8 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
     const snapshot = event.data;
     const message = snapshot.val();
 
-    // Validar la integridad del mensaje y sus campos obligatorios
-    if (!message?.text || message.timestamp === undefined) {
+    // Validar la integridad del mensaje y sus campos obligatorios (soportando tipo imagen)
+    if (!message || message.timestamp === undefined || (!message.text && message.type !== "image")) {
         return null;
     }
 
@@ -33,8 +33,10 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
     const senderId = message.sender_id;
 
     // Truncar la vista previa del mensaje para no sobrecargar el nodo principal del chat
-    let lastMessage = message.text;
-    if (lastMessage.length > 40) {
+    let lastMessage = message.text || "";
+    if (message.type === "image") {
+        lastMessage = "📸 Imagen";
+    } else if (lastMessage.length > 40) {
         lastMessage = lastMessage.substring(0, 40) + "...";
     }
 
@@ -65,6 +67,19 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
 
         // Enviar notificaciones push asíncronas a los participantes (excluyendo al emisor del mensaje)
         try {
+            // Si el mensaje es de tipo imagen, obtenemos de manera eficiente el nombre del emisor
+            let senderName = "Usuario";
+            if (message.type === "image") {
+                try {
+                    const nameSnap = await admin.database().ref(`users/${senderId}/name`).once("value");
+                    if (nameSnap.exists()) {
+                        senderName = nameSnap.val();
+                    }
+                } catch (err) {
+                    console.error("Error obteniendo nombre del remitente:", err);
+                }
+            }
+
             const notificationPromises = memberIds
                 .filter(memberId => memberId !== senderId)
                 .map(async (memberId) => {
@@ -82,6 +97,15 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                         // Internacionalización (i18n): Obtener la cadena en el idioma correspondiente (es, ca, en)
                         const userLang: SupportedLanguage = settings.language || "en";
                         const notificationTitle = getNotificationString("new_message_title", userLang);
+
+                        // Formatear dinámicamente el cuerpo de la notificación según el tipo de mensaje
+                        let notificationBody = "";
+                        if (message.type === "image") {
+                            notificationBody = getNotificationString("new_image_body", userLang)
+                                .replace("{name}", senderName);
+                        } else {
+                            notificationBody = (message.text || "").substring(0, 100);
+                        }
 
                         // Consultar los tokens de Firebase Cloud Messaging (FCM) registrados por el usuario
                         const fcmTokensSnap = await admin.database()
@@ -101,11 +125,12 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                                     token: token,
                                     notification: {
                                         title: notificationTitle,
-                                        body: message.text.substring(0, 100) // Limitar la vista en la barra de notificaciones
+                                        body: notificationBody
                                     },
                                     data: {
                                         chatId: chatId,
-                                        messageId: event.params.messageId
+                                        messageId: event.params.messageId,
+                                        ...(message.imageUrl ? { imageUrl: message.imageUrl } : {})
                                     }
                                 }).catch((error) => {
                                     console.warn(`Error enviando notificación al token ${token}:`, error);

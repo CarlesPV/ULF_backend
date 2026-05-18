@@ -38,7 +38,8 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
         console.warn(`Post ${event.params.postId} rechazado por ubicación inválida.`);
         await snapshot.ref.update({ 
             status: "rejected", 
-            rejection_reason: error.message || "out_of_bounds" 
+            rejection_reason: error.message || "out_of_bounds",
+            updated_at: admin.database.ServerValue.TIMESTAMP
         });
         return null;
     }

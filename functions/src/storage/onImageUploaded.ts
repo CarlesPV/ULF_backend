@@ -80,7 +80,8 @@ async function handleProfileImage(event: any) {
 
         await admin.database().ref(`users/${userId}`).update({
             photoUrl: publicUrl,
-            photoUpdatedAt: timestamp
+            photoUpdatedAt: timestamp,
+            updated_at: admin.database.ServerValue.TIMESTAMP
         });
 
         // Borrar la foto original en bruto para liberar espacio en disco
@@ -146,11 +147,30 @@ async function handlePostImage(event: any) {
             image: { content: fs.readFileSync(optimizedFilePath) }
         };
 
-        const visionResponse = await visionClient.labelDetection(imageRequest);
-        const labels = visionResponse[0]?.labelAnnotations || [];
-        let translatedLabels: string[] = [];
+        // Detección de etiquetas y moderación de contenido (Safe Search) de forma concurrente
+        const [labelResponse, safeSearchResponse] = await Promise.all([
+            visionClient.labelDetection(imageRequest),
+            visionClient.safeSearchDetection(imageRequest)
+        ]);
 
-        if (labels.length > 0) {
+        const labels = labelResponse[0]?.labelAnnotations || [];
+        const safeSearch = safeSearchResponse[0]?.safeSearchAnnotation;
+
+        // Comprobación estricta de moderación de contenido
+        let isSafe = true;
+        if (safeSearch) {
+            const unsafeLevels = ["LIKELY", "VERY_LIKELY"];
+            if (
+                unsafeLevels.includes(safeSearch.adult || "") ||
+                unsafeLevels.includes(safeSearch.violence || "") ||
+                unsafeLevels.includes(safeSearch.racy || "")
+            ) {
+                isSafe = false;
+            }
+        }
+
+        let translatedLabels: string[] = [];
+        if (labels.length > 0 && isSafe) {
             const labelDescriptions = labels
                 .map((label: any) => label.description)
                 .filter((desc: any) => desc && typeof desc === "string");
@@ -159,12 +179,32 @@ async function handlePostImage(event: any) {
             translatedLabels = await translateLabels(translationText, DEFAULT_LANGUAGE);
         }
 
-        // Persistir en la base de datos sincronizando los campos estandarizados del post
-        await admin.database().ref(`posts/${postId}`).update({
+        // Preparar la actualización atómica
+        const updatePayload: any = {
             postImageUrl: publicUrl,
             imageUrl: publicUrl,
-            vision_labels: translatedLabels
-        });
+            updated_at: admin.database.ServerValue.TIMESTAMP
+        };
+
+        if (!isSafe) {
+            updatePayload.status = "rejected";
+            updatePayload.rejection_reason = "inappropriate_content";
+            updatePayload.vision_labels = [];
+        } else {
+            updatePayload.vision_labels = translatedLabels;
+            
+            // Si el post fue rechazado previamente por contenido inapropiado y ahora es seguro, lo restauramos a active
+            const postRef = admin.database().ref(`posts/${postId}`);
+            const postSnap = await postRef.once("value");
+            const postData = postSnap.val();
+            if (postData?.status === "rejected" && postData?.rejection_reason === "inappropriate_content") {
+                updatePayload.status = "active";
+                updatePayload.rejection_reason = null;
+            }
+        }
+
+        // Persistir en la base de datos sincronizando los campos estandarizados del post
+        await admin.database().ref(`posts/${postId}`).update(updatePayload);
 
         await bucket.file(filePath).delete();
         console.log(`Imagen de post optimizada y analizada para ${postId}: ${publicUrl}`);

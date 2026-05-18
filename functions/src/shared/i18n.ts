@@ -16,6 +16,11 @@ export const I18N_STRINGS = {
             en: "New message",
             ca: "Nou missatge"
         },
+        new_image_body: {
+            es: "📸 {name} ha enviado una imagen",
+            en: "📸 {name} sent an image",
+            ca: "📸 {name} ha enviat una imatge"
+        },
         potential_match_title: {
             es: "¡Posible coincidencia!",
             en: "Potential match!",
@@ -35,6 +40,21 @@ export const I18N_STRINGS = {
             es: "Se encontró un objeto que podría coincidir con tu búsqueda.",
             en: "An item was found that might match your search.",
             ca: "Es va trobar un objecte que podria coincidir amb la teva recerca."
+        },
+        status_active: {
+            es: "Buscando",
+            en: "Searching",
+            ca: "Buscant"
+        },
+        status_matched: {
+            es: "Posible coincidencia",
+            en: "Possible match",
+            ca: "Possible coincidència"
+        },
+        status_returned: {
+            es: "Devuelto al dueño",
+            en: "Returned to owner",
+            ca: "Retornat al propietari"
         }
     },
     // Códigos de error estandarizados que se transmiten al cliente para traducción dinámica en la interfaz de usuario

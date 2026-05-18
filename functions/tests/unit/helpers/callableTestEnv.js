@@ -235,8 +235,16 @@ function setupCallableTestEnv(options = {}) {
     labelAnnotations: [{ description: "test label" }]
   }]);
 
+  const safeSearchDetection = jest.fn().mockResolvedValue([{
+    safeSearchAnnotation: {
+      adult: "UNLIKELY",
+      violence: "UNLIKELY",
+      racy: "UNLIKELY"
+    }
+  }]);
+
   jest.doMock(require.resolve("../../../lib/shared/vision"), () => ({
-    visionClient: { labelDetection }
+    visionClient: { labelDetection, safeSearchDetection }
   }));
 
   return {
@@ -249,6 +257,7 @@ function setupCallableTestEnv(options = {}) {
     refMock,
     translateText,
     labelDetection,
+    safeSearchDetection,
     writes
   };
 }
