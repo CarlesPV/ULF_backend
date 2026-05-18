@@ -115,7 +115,7 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                                     notification: {
                                         title: notificationTitle,
                                         body: isImage 
-                                            ? getNotificationString("new_image_body", userLang)
+                                            ? getNotificationString("image_message", userLang)
                                             : message.text.substring(0, 100) // Limitar la vista en la barra de notificaciones
                                     },
                                     data: {

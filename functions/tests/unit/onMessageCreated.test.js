@@ -180,4 +180,44 @@ describe("onMessageCreated trigger", () => {
         }));
         expect(env.messagingApi.send).not.toHaveBeenCalled();
     });
+
+    test("sends image localized push notifications to members", async () => {
+        const env = setupCallableTestEnv({
+            onceByPath: {
+                "chats/chat-1/members": {
+                    "sender-1": true,
+                    "receiver-1": true
+                },
+                "users/receiver-1/settings": {
+                    push_notifications: true,
+                    language: "ca"
+                },
+                "users/receiver-1/fcm_tokens": {
+                    "receiver-token": true
+                }
+            }
+        });
+        const { onMessageCreated } = require("../../lib/chats/onMessageCreated");
+
+        await onMessageCreated(messageEvent({
+            messageType: "image",
+            imageUrl: "https://example.com/image.jpg",
+            timestamp: 12345,
+            sender_id: "sender-1"
+        }, "chat-1", "message-99"));
+
+        expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
+        expect(env.messagingApi.send).toHaveBeenCalledWith({
+            token: "receiver-token",
+            notification: {
+                title: "Nou missatge",
+                body: "📷 Imatge"
+            },
+            data: {
+                chatId: "chat-1",
+                messageId: "message-99"
+            }
+        });
+    });
 });
+

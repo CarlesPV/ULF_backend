@@ -21,6 +21,11 @@ export const I18N_STRINGS = {
             en: "Sent you an image",
             ca: "T'ha enviat una imatge"
         },
+        image_message: {
+            es: "📷 Imagen",
+            en: "📷 Image",
+            ca: "📷 Imatge"
+        },
         potential_match_title: {
             es: "¡Posible coincidencia!",
             en: "Potential match!",
