@@ -7,22 +7,26 @@ import { SupportedLanguage } from "./types";
  */
 export enum NotificationType {
     MATCH_FOUND = "match_found",
-    MATCH_ALERT = "match_alert"
+    MATCH_ALERT = "match_alert",
+    NEW_MESSAGE = "new_message"
 }
 
 /**
- * Representa la estructura de datos obligatoria para construir una notificación push en FCM.
+ * Representa la estructura de datos obligatoria para construir una notificación push en FCM y guardar In-App.
  */
 export interface NotificationPayload {
-    type: NotificationType;
+    type: NotificationType | string;
     title: string;
     body: string;
     data: {
-        matchPostId: string;
-        matchTitle: string;
-        matchScore: number;
+        matchPostId?: string;
+        matchTitle?: string;
+        matchScore?: number;
         matchPhotoUrl?: string;
         timestamp: number;
+        chatId?: string;
+        messageId?: string;
+        [key: string]: any;
     };
 }
 
@@ -67,11 +71,13 @@ export async function sendNotificationToUser(
             },
             data: {
                 type: payload.type,
-                matchPostId: payload.data.matchPostId,
-                matchTitle: payload.data.matchTitle,
-                matchScore: payload.data.matchScore.toString(),
+                matchPostId: payload.data.matchPostId || "",
+                matchTitle: payload.data.matchTitle || "",
+                matchScore: payload.data.matchScore !== undefined ? payload.data.matchScore.toString() : "",
                 matchPhotoUrl: payload.data.matchPhotoUrl || "",
-                timestamp: payload.data.timestamp.toString(),
+                timestamp: payload.data.timestamp ? payload.data.timestamp.toString() : Date.now().toString(),
+                chatId: payload.data.chatId || "",
+                messageId: payload.data.messageId || "",
             },
         };
 
@@ -176,6 +182,12 @@ export async function notifyMatchFound(
         },
     };
 
+    try {
+        await saveInAppNotification(userId, payload, lang);
+    } catch (error) {
+        console.error(`Error al guardar la notificación in-app para el usuario ${userId}:`, error);
+    }
+
     return sendNotificationToUser(userId, payload);
 }
 
@@ -206,4 +218,45 @@ export async function notifyMultipleUsersOfMatch(
 
     console.log(`Notificación de match: ${success} éxito, ${failed} fallos`);
     return { success, failed };
+}
+
+/**
+ * Guarda una notificación in-app en la base de datos Realtime Database (RTDB) para la bandeja de alertas del cliente.
+ * 
+ * Escribe en `/users/{userId}/notifications/{pushId}` un objeto con la información de la notificación y su estado.
+ * 
+ * @param userId - Identificador del usuario destinatario.
+ * @param payload - Contenido y datos de la notificación.
+ * @param lang - Idioma de la notificación (es, en, ca).
+ * 
+ * @returns El identificador único generado para la notificación.
+ */
+export async function saveInAppNotification(
+    userId: string,
+    payload: NotificationPayload,
+    lang: SupportedLanguage
+): Promise<string> {
+    try {
+        const notifRef = admin.database().ref(`users/${userId}/notifications`).push();
+        const pushId = notifRef.key;
+        if (!pushId) {
+            throw new Error("No se pudo generar un ID único para la notificación");
+        }
+
+        const notification = {
+            id: pushId,
+            type: payload.type,
+            title: payload.title,
+            body: payload.body,
+            read: false,
+            timestamp: payload.data.timestamp || Date.now(),
+            data: payload.data,
+        };
+
+        await notifRef.set(notification);
+        return pushId;
+    } catch (error) {
+        console.error(`Error al guardar la notificación in-app para el usuario ${userId}:`, error);
+        throw error;
+    }
 }
