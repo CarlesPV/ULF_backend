@@ -66,7 +66,8 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         } catch (error) {
             console.error("Error en traducción:", error);
         }
-        searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
+        const stopWords = new Set(["the", "and", "for", "but", "not", "con", "del", "una", "los", "las", "por", "que", "els", "les", "per", "sus", "com", "out", "you", "him", "her", "its", "our", "are", "was", "has", "had", "bin"]);
+        searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2 && !stopWords.has(w));
     }
 
     // Filtrado semántico y cálculo de puntuación (Scoring)
@@ -95,11 +96,20 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
                 description: post.description,
                 score: score,
                 photo_path: post.photo_path,
-                postImageUrl: post.postImageUrl || post.imageUrl || post.photo_url || ""
+                postImageUrl: post.postImageUrl || post.imageUrl || post.photo_url || "",
+                created_at: post.created_at || post.date || 0
             });
         }
     }
 
-    // Retornar las 5 coincidencias de mayor relevancia
-    return { matches: potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5) };
+    // Retornar las 5 coincidencias de mayor relevancia (más recientes en caso de empate)
+    return { 
+        matches: potentialMatches
+            .sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return (b.created_at || 0) - (a.created_at || 0);
+            })
+            .slice(0, 5)
+            .map(({ created_at, ...rest }) => rest)
+    };
 });
