@@ -33,7 +33,7 @@ import { I18N_STRINGS } from "../shared/i18n";
  *   - 'invalid-argument': Si faltan los campos estructurales mandatorios.
  */
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
-    const { center_id, category, type, color, description } = request.data;
+    const { center_id, category, type, color, description, title } = request.data;
 
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
@@ -56,7 +56,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const postSnapshots = await Promise.all(postPromises);
 
     // Preparar términos lingüísticos y traducción automática al idioma unificado del backend
-    let searchTerms = `${color || ""} ${description || ""}`.trim();
+    let searchTerms = `${title || ""} ${color || ""} ${description || ""}`.trim();
     let searchWords: string[] = [];
     
     if (searchTerms !== "") {
@@ -78,7 +78,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
 
         if (post.type === targetType && post.category === category && !post.is_deleted) {
             let score = 1.0;
-            const targetDesc = post.translated_description || post.description?.toLowerCase() || "";
+            const targetDesc = `${post.title || ""} ${post.translated_description || post.description?.toLowerCase() || ""}`.toLowerCase();
 
             if (searchWords.length > 0 && targetDesc) {
                 let matchCount = 0;
