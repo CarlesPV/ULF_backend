@@ -332,15 +332,15 @@ describe("checkPotentialMatches", () => {
     // Expect translation to be called with: "especial azul llavero"
     expect(env.translateText).toHaveBeenCalledWith("especial azul llavero", "es");
 
-    // "special key" splits to ["special"] ("key" length <= 3 is filtered out)
-    // "lost-special" has targetDesc = "special keychain some other details". Word "special" matches, so score = 1.0 (base) + 0.5 = 1.5
-    // "lost-normal" has targetDesc = "ordinary keys some other details". No words match, so score = 1.0
+    // "special key" splits to ["special", "key"]
+    // "lost-special" has targetDesc = "special keychain some other details". Words "special" and "key" match, so score = 1.0 (base) + 2 * 0.5 = 2.0
+    // "lost-normal" has targetDesc = "ordinary keys some other details". Word "key" matches, so score = 1.0 (base) + 0.5 = 1.5
     expect(result.matches).toEqual([
       {
         id: "lost-special",
         title: "Special keychain",
         description: undefined,
-        score: 1.5,
+        score: 2,
         photo_path: "posts/lost-special.jpg",
         postImageUrl: ""
       },
@@ -348,7 +348,7 @@ describe("checkPotentialMatches", () => {
         id: "lost-normal",
         title: "Ordinary keys",
         description: undefined,
-        score: 1.0,
+        score: 1.5,
         photo_path: "posts/lost-normal.jpg",
         postImageUrl: ""
       }
