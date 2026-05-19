@@ -2,6 +2,7 @@ import { onValueCreated } from "firebase-functions/v2/database";
 import { admin } from "../shared/firebase";
 import { getNotificationString } from "../shared/i18n";
 import { SupportedLanguage } from "../shared/types";
+import { saveInAppNotification } from "../shared/notifications";
 
 /**
  * Trigger de Realtime Database que se ejecuta al crearse un nuevo mensaje en la ruta `/messages/{chatId}/{messageId}`.
@@ -88,8 +89,9 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                             .once("value");
                         const settings = userSettingsSnap.val() || {};
 
-                        if (settings.push_notifications !== true) {
-                            return;
+                        const pushEnabled = settings.push_notifications === undefined ? true : settings.push_notifications;
+                        if (pushEnabled !== true) {
+                            return null;
                         }
 
                         // Internacionalización (i18n): Obtener la cadena en el idioma correspondiente (es, ca, en)
@@ -106,6 +108,26 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                             userLang = rawLang;
                         }
                         const notificationTitle = getNotificationString("new_message_title", userLang);
+                        const notificationBody = isImage 
+                            ? getNotificationString("image_message", userLang)
+                            : message.text.substring(0, 100); // Limitar la vista en la barra de notificaciones
+
+                        const inAppPayload = {
+                            type: "new_message",
+                            title: notificationTitle,
+                            body: notificationBody,
+                            data: {
+                                chatId: chatId,
+                                messageId: event.params.messageId,
+                                timestamp: message.timestamp || Date.now()
+                            }
+                        };
+
+                        // Guardar la notificación In-App concurrentemente
+                        const saveInAppPromise = saveInAppNotification(memberId, inAppPayload, userLang).catch((err) => {
+                            console.error(`Error al guardar la notificación in-app para usuario ${memberId}:`, err);
+                            return null;
+                        });
 
                         // Consultar los tokens de Firebase Cloud Messaging (FCM) registrados por el usuario
                         const fcmTokensSnap = await admin.database()
@@ -113,38 +135,38 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                             .once("value");
 
                         if (!fcmTokensSnap.exists()) {
-                            return;
+                            await saveInAppPromise;
+                            return null;
                         }
 
                         const fcmTokens = Object.keys(fcmTokensSnap.val());
 
-                        // Transmitir la notificación a todos los dispositivos del usuario de forma concurrente
-                        return Promise.all(
-                            fcmTokens.map((token) =>
-                                admin.messaging().send({
-                                    token: token,
-                                    notification: {
-                                        title: notificationTitle,
-                                        body: isImage 
-                                            ? getNotificationString("image_message", userLang)
-                                            : message.text.substring(0, 100) // Limitar la vista en la barra de notificaciones
-                                    },
-                                    data: {
-                                        chatId: chatId,
-                                        messageId: event.params.messageId
-                                    }
-                                }).catch((error) => {
-                                    console.warn(`Error enviando notificación al token ${token}:`, error);
-                                    // Limpieza de tokens obsoletos o inválidos para liberar almacenamiento
-                                    if (error.code === "messaging/invalid-registration-token") {
-                                        return admin.database()
-                                            .ref(`users/${memberId}/fcm_tokens/${token}`)
-                                            .remove();
-                                    }
-                                    return null;
-                                })
-                            )
+                        // Transmitir la notificación a todos los dispositivos del usuario de forma concurrente junto con la persistencia In-App
+                        const sendPromises = fcmTokens.map((token) =>
+                            admin.messaging().send({
+                                token: token,
+                                notification: {
+                                    title: inAppPayload.title,
+                                    body: inAppPayload.body
+                                },
+                                data: {
+                                    chatId: chatId,
+                                    messageId: event.params.messageId
+                                }
+                            }).catch((error) => {
+                                console.warn(`Error enviando notificación al token ${token}:`, error);
+                                // Limpieza de tokens obsoletos o inválidos para liberar almacenamiento
+                                if (error.code === "messaging/invalid-registration-token") {
+                                    return admin.database()
+                                        .ref(`users/${memberId}/fcm_tokens/${token}`)
+                                        .remove();
+                                }
+                                return null;
+                            })
                         );
+
+                        await Promise.all([saveInAppPromise, ...sendPromises]);
+                        return null;
                     } catch (memberError) {
                         console.error(`Error procesando notificaciones para usuario ${memberId}:`, memberError);
                         return null;

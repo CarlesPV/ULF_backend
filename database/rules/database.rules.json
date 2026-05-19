@@ -11,10 +11,10 @@
             }
         },
         "users": {
-            "$user_id": {
-                ".write": "auth != null && auth.uid === $user_id && auth.token.email_verified === true",
-                ".read": "auth != null && auth.uid === $user_id",
-                ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $user_id && newData.child('updated_at').val() === now",
+            "$uid": {
+                ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true",
+                ".read": "auth != null && auth.uid === $uid",
+                ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $uid && newData.child('updated_at').val() === now",
                 "role": {
                     ".validate": "(!data.exists() && newData.val() === 'student') || (data.exists() && newData.val() === data.val())"
                 },
@@ -26,11 +26,17 @@
                         ".validate": "newData.isString() && newData.val().matches(/^(es|en|ca)$/)"
                     },
                     "push_notifications": {
+                        ".read": "$uid === auth.uid",
+                        ".write": "$uid === auth.uid",
                         ".validate": "newData.isBoolean()"
                     },
                     "dark_mode": {
                         ".validate": "newData.isBoolean()"
                     }
+                },
+                "notifications": {
+                    ".read": "$uid === auth.uid",
+                    ".write": "$uid === auth.uid"
                 }
             }
         },
