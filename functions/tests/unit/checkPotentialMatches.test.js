@@ -52,6 +52,7 @@ describe("checkPotentialMatches", () => {
           category: "keys",
           is_deleted: false,
           title: "Llaves azules",
+          brand: "Samsung",
           translated_description: "blue ribbon keychain",
           photo_path: "posts/lost-1.jpg"
         },
@@ -61,6 +62,7 @@ describe("checkPotentialMatches", () => {
           category: "keys",
           is_deleted: false,
           title: "Otro post",
+          brand: "Samsung",
           translated_description: "blue ribbon",
           photo_path: "posts/found-1.jpg"
         },
@@ -70,6 +72,7 @@ describe("checkPotentialMatches", () => {
           category: "keys",
           is_deleted: true,
           title: "Borrado",
+          brand: "Samsung",
           translated_description: "blue ribbon",
           photo_path: "posts/deleted-1.jpg"
         }
@@ -83,7 +86,9 @@ describe("checkPotentialMatches", () => {
       type: "found",
       category: "keys",
       color: "azul",
-      description: "cinta"
+      description: "cinta",
+      title: "Llaves",
+      brand: "Samsung"
     }));
 
     expect(result).toEqual({
@@ -100,7 +105,7 @@ describe("checkPotentialMatches", () => {
     });
     expect(env.refMock).toHaveBeenCalledWith("active_posts/uab/lost");
     expect(env.refMock).toHaveBeenCalledWith("posts/lost-1");
-    expect(env.translateText).toHaveBeenCalledWith("azul cinta", "es");
+    expect(env.translateText).toHaveBeenCalledWith("Llaves Samsung azul cinta", "es");
   });
 
   test("returns an empty list when the active index has no entries", async () => {
@@ -288,5 +293,78 @@ describe("checkPotentialMatches", () => {
       photo_path: "posts/lost-6.jpg",
       postImageUrl: ""
     });
+  });
+
+  test("verifies that a matching keyword in title/brand (+1.0) scores higher than in description (+0.5)", async () => {
+    setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-title-match": 100,
+          "lost-desc-match": 101
+        },
+        "posts/lost-title-match": {
+          id: "lost-title-match",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          title: "Samsung Galaxy keys",
+          description: "Sin detalles",
+          photo_path: "posts/lost-title-match.jpg"
+        },
+        "posts/lost-desc-match": {
+          id: "lost-desc-match",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          title: "Llaves normales",
+          description: "Encontradas con Samsung llavero",
+          photo_path: "posts/lost-desc-match.jpg"
+        }
+      },
+      translateResult: "Samsung"
+    });
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      title: "Samsung"
+    }));
+
+    // El post con Samsung en el título debe tener un score de 2.0 (1.0 base + 1.0 por título)
+    // El post con Samsung en la descripción debe tener un score de 1.5 (1.0 base + 0.5 por descripción)
+    // Por lo tanto, el de título debe estar primero en la lista
+    expect(result.matches).toHaveLength(2);
+    expect(result.matches[0].id).toBe("lost-title-match");
+    expect(result.matches[0].score).toBe(2.0);
+    expect(result.matches[1].id).toBe("lost-desc-match");
+    expect(result.matches[1].score).toBe(1.5);
+  });
+
+  test("rejects request if optional fields are not strings", async () => {
+    setupCallableTestEnv();
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    await expect(checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      title: 12345
+    }))).rejects.toMatchObject({ code: "invalid-argument" });
+
+    await expect(checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      brand: true
+    }))).rejects.toMatchObject({ code: "invalid-argument" });
+
+    await expect(checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      location: {}
+    }))).rejects.toMatchObject({ code: "invalid-argument" });
   });
 });
