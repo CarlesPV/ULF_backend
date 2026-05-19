@@ -289,4 +289,69 @@ describe("checkPotentialMatches", () => {
       postImageUrl: ""
     });
   });
+
+  test("includes title in search terms and awards score bonus for matching words in the target post title", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-special": 100,
+          "lost-normal": 101
+        },
+        "posts/lost-special": {
+          id: "lost-special",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          title: "Special keychain",
+          translated_description: "some other details",
+          photo_path: "posts/lost-special.jpg"
+        },
+        "posts/lost-normal": {
+          id: "lost-normal",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          title: "Ordinary keys",
+          translated_description: "some other details",
+          photo_path: "posts/lost-normal.jpg"
+        }
+      },
+      translateResult: "special key"
+    });
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      title: "especial",
+      color: "azul",
+      description: "llavero"
+    }));
+
+    // Expect translation to be called with: "especial azul llavero"
+    expect(env.translateText).toHaveBeenCalledWith("especial azul llavero", "es");
+
+    // "special key" splits to ["special"] ("key" length <= 3 is filtered out)
+    // "lost-special" has targetDesc = "special keychain some other details". Word "special" matches, so score = 1.0 (base) + 0.5 = 1.5
+    // "lost-normal" has targetDesc = "ordinary keys some other details". No words match, so score = 1.0
+    expect(result.matches).toEqual([
+      {
+        id: "lost-special",
+        title: "Special keychain",
+        description: undefined,
+        score: 1.5,
+        photo_path: "posts/lost-special.jpg",
+        postImageUrl: ""
+      },
+      {
+        id: "lost-normal",
+        title: "Ordinary keys",
+        description: undefined,
+        score: 1.0,
+        photo_path: "posts/lost-normal.jpg",
+        postImageUrl: ""
+      }
+    ]);
+  });
 });
