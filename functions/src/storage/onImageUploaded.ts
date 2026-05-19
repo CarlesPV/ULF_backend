@@ -20,15 +20,33 @@ import * as fs from "fs";
  */
 export const onImageUploaded = onObjectFinalized(async (event) => {
     const filePath = event.data.name; 
+    const metadata = event.data.metadata || {};
 
-    // Filtrar imágenes de publicaciones que no han sido convertidas aún
-    if (filePath.startsWith("posts/") && event.data.contentType !== "image/webp") {
+    // Evitar bucles infinitos si la imagen ya fue procesada por el backend
+    if (metadata.processed === "true") {
+        return null;
+    }
+
+    // Filtrar imágenes de publicaciones (procesar nuevas subidas y actualizaciones)
+    if (filePath.startsWith("posts/")) {
         return handlePostImage(event);
     }
 
-    // Filtrar fotos de perfil en formato original
-    if (filePath.startsWith("users/") && filePath.endsWith("/profile_image") && event.data.contentType !== "image/webp") {
-        return handleProfileImage(event);
+    // Filtrar fotos de perfil en formato original (soporta nombres dinámicos con timestamps y webp)
+    if (filePath.startsWith("users/")) {
+        const pathParts = filePath.split("/");
+        if (pathParts.length >= 3) {
+            const userId = pathParts[1];
+            const fileName = pathParts[pathParts.length - 1];
+            const profileRegex = new RegExp(`^${userId}(_\\d+)?(\\.[a-zA-Z0-9]+)?$`);
+            if (profileRegex.test(fileName) || fileName === "profile_image") {
+                // Evitar bucles infinitos al omitir el archivo destino procesado (profile_image.webp)
+                // y evitar reprocesar la subida heredada si ya es webp
+                if (fileName !== "profile_image.webp" && !(fileName === "profile_image" && event.data.contentType === "image/webp")) {
+                    return handleProfileImage(event);
+                }
+            }
+        }
     }
 
     return null;
@@ -80,7 +98,8 @@ async function handleProfileImage(event: any) {
 
         await admin.database().ref(`users/${userId}`).update({
             photoUrl: publicUrl,
-            photoUpdatedAt: timestamp
+            photoUpdatedAt: timestamp,
+            updated_at: admin.database.ServerValue.TIMESTAMP
         });
 
         // Borrar la foto original en bruto para liberar espacio en disco
@@ -130,16 +149,25 @@ async function handlePostImage(event: any) {
             .toFormat("webp")
             .toFile(optimizedFilePath);
 
-        const destination = `posts/${postId}/${fileName}.webp`;
+        // Evitar nombres redundantes con doble extensión .webp.webp
+        const baseName = fileName.toLowerCase().endsWith(".webp")
+            ? fileName.substring(0, fileName.length - 5)
+            : fileName;
+        const destination = `posts/${postId}/${baseName}.webp`;
+
         await bucket.upload(optimizedFilePath, {
             destination,
             metadata: {
                 contentType: "image/webp",
-                cacheControl: "public, max-age=3600, s-maxage=3600"
+                cacheControl: "public, max-age=3600, s-maxage=3600",
+                metadata: {
+                    processed: "true"
+                }
             }
         });
 
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media`;
+        const timestamp = Date.now();
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media&t=${timestamp}`;
 
         // Analizar la imagen convertida para detectar sus características visuales y clasificar el objeto
         const imageRequest = {
@@ -159,14 +187,36 @@ async function handlePostImage(event: any) {
             translatedLabels = await translateLabels(translationText, DEFAULT_LANGUAGE);
         }
 
+        // Limpieza de imágenes previas (Evitar basura en Storage)
+        try {
+            const postSnapshot = await admin.database().ref(`posts/${postId}`).once("value");
+            const oldImageUrl = postSnapshot.val()?.imageUrl;
+            if (oldImageUrl && typeof oldImageUrl === "string") {
+                const matches = oldImageUrl.match(/\/o\/([^?#]+)/);
+                if (matches && matches[1]) {
+                    const oldPathDecoded = decodeURIComponent(matches[1]);
+                    if (oldPathDecoded !== destination) {
+                        await bucket.file(oldPathDecoded).delete();
+                        console.log(`Archivo antiguo de Storage eliminado con éxito: ${oldPathDecoded}`);
+                    }
+                }
+            }
+        } catch (storageError) {
+            console.error("Error al intentar limpiar la imagen antigua de Storage:", storageError);
+        }
+
         // Persistir en la base de datos sincronizando los campos estandarizados del post
         await admin.database().ref(`posts/${postId}`).update({
             postImageUrl: publicUrl,
             imageUrl: publicUrl,
-            vision_labels: translatedLabels
+            vision_labels: translatedLabels,
+            updated_at: admin.database.ServerValue.TIMESTAMP
         });
 
-        await bucket.file(filePath).delete();
+        // Evitar borrar el archivo si es el mismo que subimos ya optimizado
+        if (filePath !== destination) {
+            await bucket.file(filePath).delete();
+        }
         console.log(`Imagen de post optimizada y analizada para ${postId}: ${publicUrl}`);
 
     } catch (error) {

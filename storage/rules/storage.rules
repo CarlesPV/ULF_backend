@@ -10,10 +10,14 @@ service firebase.storage {
     // Objetos perdidos / encontrados
     match /posts/{postId}/{imageName} {
       allow read: if true;
-      // Permitimos subida a cualquier usuario autenticado (se procesará a WebP luego)
-      allow write: if isAuthenticated()
-                   && request.resource.size < 5 * 1024 * 1024
-                   && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
+      
+      // Permitimos la creación y actualización a cualquier usuario autenticado (se procesará a WebP en handlePostImage)
+      allow create, update: if isAuthenticated()
+                            && request.resource.size < 5 * 1024 * 1024
+                            && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
+                    
+      // Permitimos la eliminación (la autoría final se valida en el backend y base de datos)
+      allow delete: if isAuthenticated();
     }
 
     // Fotos de perfil
@@ -29,6 +33,16 @@ service firebase.storage {
     match /users/{userId}/profile_image.webp {
       allow read: if true;
       allow write: if false; // Solo accesible vía Admin SDK (Cloud Functions)
+    }
+
+    // Imágenes en chats
+    match /chats/{chatId}/{imageId} {
+      allow read: if isAuthenticated();
+      // Debido a limitaciones de Firebase Storage, no es posible leer Realtime Database directamente desde las reglas.
+      // Validamos autenticación, formato y tamaño de imagen flexible para evitar conflictos similares de subida.
+      allow write: if isAuthenticated()
+                   && request.resource.size < 5 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
     }
   }
 }

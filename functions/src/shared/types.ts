@@ -1,5 +1,7 @@
 export type Category = "accessories" | "clothes" | "devices" | "wallets" | "keys" | "bags" | "study" | "others";
 
+export type PostStatus = "active" | "matched" | "returned";
+
 export interface PostReportPayload {
     center_id: string;
     type: "lost" | "found";
@@ -20,7 +22,7 @@ export interface Post {
     description: string;
     translated_description?: string;
     category: Category;
-    status: "active" | "matched" | "returned";
+    status: PostStatus;
     coords: {
         lat: number;
         lng: number;

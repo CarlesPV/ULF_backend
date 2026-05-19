@@ -84,18 +84,30 @@ describe("integration: Realtime Database rules", () => {
 
   test("users can write only their own post view entry", async () => {
     await createVerifiedUser({
+      uid: "owner-1",
+      email: "owner@uab.cat"
+    });
+    await createVerifiedUser({
       uid: "viewer-1",
       email: "viewer@uab.cat"
     });
-    const client = await signInClient(createClientApp(), "viewer@uab.cat");
+    await adminDb().ref("posts/post-1").set(validPost("post-1", "owner-1"));
+    const viewerClient = await signInClient(createClientApp(), "viewer@uab.cat");
 
     await expect(firebaseDb.set(
-      firebaseDb.ref(client.database, "post_views/post-1/viewer-1"),
+      firebaseDb.ref(viewerClient.database, "post_views/post-1/viewer-1"),
       { timestamp: Date.now() }
     )).resolves.toBeUndefined();
 
     await expectPermissionDenied(firebaseDb.set(
-      firebaseDb.ref(client.database, "post_views/post-1/other-user"),
+      firebaseDb.ref(viewerClient.database, "post_views/post-1/other-user"),
+      { timestamp: Date.now() }
+    ));
+
+    const ownerClient = await signInClient(createClientApp(), "owner@uab.cat");
+
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(ownerClient.database, "post_views/post-1/owner-1"),
       { timestamp: Date.now() }
     ));
   });

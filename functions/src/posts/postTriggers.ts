@@ -6,6 +6,7 @@ import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { notifyMultipleUsersOfMatch } from "../shared/notifications";
 import { getHaversineDistance } from "../shared/utils";
 import { I18N_STRINGS } from "../shared/i18n";
+import * as functions from "firebase-functions";
 import { logger } from "firebase-functions";
 
 // Margen de tolerancia de 50 metros para compensar punto flotante y GPS (según roadmap.md)
@@ -38,7 +39,8 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
         console.warn(`Post ${event.params.postId} rechazado por ubicación inválida.`);
         await snapshot.ref.update({ 
             status: "rejected", 
-            rejection_reason: error.message || "out_of_bounds" 
+            rejection_reason: error.message || "out_of_bounds",
+            updated_at: admin.database.ServerValue.TIMESTAMP 
         });
         return null;
     }
@@ -111,9 +113,37 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
         tasks.push(syncPostMetadataToChats(event.params.postId, after.title, after.postImageUrl || after.imageUrl));
     }
 
+    // Gestión de archivos huérfanos: Si la URL de imagen ha cambiado, eliminamos la anterior física de Storage
+    const oldImageUrl = before?.imageUrl;
+    const newImageUrl = after?.imageUrl;
+    if (oldImageUrl && oldImageUrl !== newImageUrl) {
+        tasks.push(deleteStorageFileFromUrl(oldImageUrl));
+    }
+
     await Promise.all(tasks);
     return null;
 });
+
+/**
+ * Elimina físicamente un archivo de Firebase Storage a partir de su URL pública.
+ * 
+ * @param url - URL pública de Firebase Storage del archivo a eliminar.
+ */
+async function deleteStorageFileFromUrl(url: string): Promise<void> {
+    if (!url || !url.startsWith("https://firebasestorage.googleapis.com")) return;
+    try {
+        const match = url.match(/\/o\/([^?#]+)/);
+        if (match && match[1]) {
+            const storagePath = decodeURIComponent(match[1]);
+            const bucket = admin.storage().bucket();
+            const file = bucket.file(storagePath);
+            await file.delete();
+            functions.logger.info(`[Storage Cleanup] Imagen huérfana eliminada físicamente: ${storagePath}`);
+        }
+    } catch (error) {
+        functions.logger.error(`[Storage Cleanup Error] Fallo al eliminar imagen anterior (${url}):`, error);
+    }
+}
 
 /**
  * Sincroniza y propaga los metadatos de una publicación hacia todos sus chats activos asociados.

@@ -25,7 +25,15 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
     const message = snapshot.val();
 
     // Validar la integridad del mensaje y sus campos obligatorios
-    if (!message?.text || message.timestamp === undefined) {
+    if (!message || message.timestamp === undefined) {
+        return null;
+    }
+
+    const isImage = message.messageType === "image";
+    if (!isImage && !message.text) {
+        return null;
+    }
+    if (isImage && !message.imageUrl) {
         return null;
     }
 
@@ -33,9 +41,14 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
     const senderId = message.sender_id;
 
     // Truncar la vista previa del mensaje para no sobrecargar el nodo principal del chat
-    let lastMessage = message.text;
-    if (lastMessage.length > 40) {
-        lastMessage = lastMessage.substring(0, 40) + "...";
+    let lastMessage = "";
+    if (isImage) {
+        lastMessage = "📷 Imagen";
+    } else {
+        lastMessage = message.text || "";
+        if (lastMessage.length > 40) {
+            lastMessage = lastMessage.substring(0, 40) + "...";
+        }
     }
 
     try {
@@ -101,7 +114,9 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                                     token: token,
                                     notification: {
                                         title: notificationTitle,
-                                        body: message.text.substring(0, 100) // Limitar la vista en la barra de notificaciones
+                                        body: isImage 
+                                            ? getNotificationString("image_message", userLang)
+                                            : message.text.substring(0, 100) // Limitar la vista en la barra de notificaciones
                                     },
                                     data: {
                                         chatId: chatId,

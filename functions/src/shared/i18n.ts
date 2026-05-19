@@ -1,4 +1,4 @@
-import { SupportedLanguage } from "./types";
+import { SupportedLanguage, PostStatus } from "./types";
 
 /**
  * Diccionario centralizado de cadenas y códigos para internacionalización (i18n) en el Backend.
@@ -15,6 +15,16 @@ export const I18N_STRINGS = {
             es: "Nuevo mensaje",
             en: "New message",
             ca: "Nou missatge"
+        },
+        new_image_body: {
+            es: "Te ha enviado una imagen",
+            en: "Sent you an image",
+            ca: "T'ha enviat una imatge"
+        },
+        image_message: {
+            es: "📷 Imagen",
+            en: "📷 Image",
+            ca: "📷 Imatge"
         },
         potential_match_title: {
             es: "¡Posible coincidencia!",
@@ -35,6 +45,23 @@ export const I18N_STRINGS = {
             es: "Se encontró un objeto que podría coincidir con tu búsqueda.",
             en: "An item was found that might match your search.",
             ca: "Es va trobar un objecte que podria coincidir amb la teva recerca."
+        }
+    },
+    statuses: {
+        active: {
+            es: "Buscando",
+            ca: "Buscant",
+            en: "Searching"
+        },
+        matched: {
+            es: "Posible coincidencia",
+            ca: "Possible coincidència",
+            en: "Potential match"
+        },
+        returned: {
+            es: "Devuelto",
+            ca: "Retornat",
+            en: "Returned"
         }
     },
     // Códigos de error estandarizados que se transmiten al cliente para traducción dinámica en la interfaz de usuario
@@ -74,3 +101,20 @@ export function getNotificationString(
     const stringSet = I18N_STRINGS.notifications[key];
     return (stringSet as any)[lang] || (stringSet as any)["en"];
 }
+
+/**
+ * Obtiene y resuelve la cadena localizada para un estado de publicación en base al idioma preferido.
+ * 
+ * @param key - Clave que identifica el estado de la publicación ("active", "matched", "returned").
+ * @param lang - Código del idioma seleccionado por el usuario ("es", "en", "ca"). Por defecto se utiliza "en" (inglés).
+ * 
+ * @returns La cadena de texto traducida. Si el idioma no está disponible, realiza un fallback automático a inglés.
+ */
+export function getStatusString(
+    key: PostStatus,
+    lang: SupportedLanguage = "en"
+): string {
+    const stringSet = I18N_STRINGS.statuses[key];
+    return (stringSet as any)[lang] || (stringSet as any)["en"];
+}
+
