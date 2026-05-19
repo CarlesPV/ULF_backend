@@ -33,13 +33,33 @@ import { I18N_STRINGS } from "../shared/i18n";
  *   - 'invalid-argument': Si faltan los campos estructurales mandatorios.
  */
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
-    const { center_id, category, type, color, description } = request.data;
+    const { center_id, category, type, color, description, title, brand, location, date } = request.data || {};
 
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
     }
     if (!center_id || !category || !type) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
+    }
+
+    // Validaciones de tipo string
+    if (title !== undefined && title !== null && typeof title !== "string") {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+    }
+    if (brand !== undefined && brand !== null && typeof brand !== "string") {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+    }
+    if (location !== undefined && location !== null && typeof location !== "string") {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+    }
+    if (color !== undefined && color !== null && typeof color !== "string") {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+    }
+    if (description !== undefined && description !== null && typeof description !== "string") {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+    }
+    if (date !== undefined && date !== null && typeof date !== "string") {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
     }
 
     // Buscar objetos en la categoría contraria para emparejamiento
@@ -56,7 +76,8 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const postSnapshots = await Promise.all(postPromises);
 
     // Preparar términos lingüísticos y traducción automática al idioma unificado del backend
-    let searchTerms = `${color || ""} ${description || ""}`.trim();
+    const searchTermsArray = [title, brand, color, description, location].filter(val => typeof val === "string" && val.trim() !== "");
+    const searchTerms = searchTermsArray.join(" ").trim();
     let searchWords: string[] = [];
     
     if (searchTerms !== "") {
@@ -78,15 +99,32 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
 
         if (post.type === targetType && post.category === category && !post.is_deleted) {
             let score = 1.0;
-            const targetDesc = post.translated_description || post.description?.toLowerCase() || "";
+            
+            const titleLower = post.title?.toLowerCase() || "";
+            const brandLower = post.brand?.toLowerCase() || "";
+            const descLower = post.description?.toLowerCase() || "";
+            const transDescLower = post.translated_description?.toLowerCase() || "";
+            const locationLower = post.location?.toLowerCase() || "";
 
-            if (searchWords.length > 0 && targetDesc) {
-                let matchCount = 0;
+            if (searchWords.length > 0) {
                 for (const word of searchWords) {
-                    if (targetDesc.includes(word)) matchCount++;
+                    let wordMatchedHigh = false;
+                    let wordMatchedNormal = false;
+                    
+                    if (titleLower.includes(word) || brandLower.includes(word)) {
+                        wordMatchedHigh = true;
+                    }
+                    if (transDescLower.includes(word) || descLower.includes(word) || locationLower.includes(word)) {
+                        wordMatchedNormal = true;
+                    }
+                    
+                    if (wordMatchedHigh) {
+                        score += 1.0;
+                    }
+                    if (wordMatchedNormal) {
+                        score += 0.5;
+                    }
                 }
-                // Peso incremental por cada coincidencia de palabra clave
-                score += (matchCount * 0.5);
             }
 
             potentialMatches.push({
