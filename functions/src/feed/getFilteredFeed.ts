@@ -51,9 +51,9 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
-    // Consultar las claves de publicaciones activas desde el índice secundario de centros
+    // Consultar las claves de publicaciones activas desde el índice secundario de centros filtrado por tipo
     const activeKeysSnap = await admin.database()
-        .ref(`active_posts/${center_id}`)
+        .ref(`active_posts/${center_id}/${type}`)
         .orderByValue()
         .once("value");
 

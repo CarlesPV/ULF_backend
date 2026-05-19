@@ -41,7 +41,7 @@ describe("checkPotentialMatches", () => {
   test("reads active post ids and returns the highest scoring candidates", async () => {
     const env = setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "lost-1": 100,
           "found-1": 101,
           "deleted-1": 102
@@ -98,7 +98,7 @@ describe("checkPotentialMatches", () => {
         }
       ]
     });
-    expect(env.refMock).toHaveBeenCalledWith("active_posts/uab");
+    expect(env.refMock).toHaveBeenCalledWith("active_posts/uab/lost");
     expect(env.refMock).toHaveBeenCalledWith("posts/lost-1");
     expect(env.translateText).toHaveBeenCalledWith("azul cinta", "es");
   });
@@ -106,7 +106,7 @@ describe("checkPotentialMatches", () => {
   test("returns an empty list when the active index has no entries", async () => {
     setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": null
+        "active_posts/uab/lost": null
       },
       translateResult: "blue"
     });
@@ -124,7 +124,7 @@ describe("checkPotentialMatches", () => {
   test("ignores active index entries whose post snapshot no longer exists", async () => {
     setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "missing-1": 100
         },
         "posts/missing-1": null
@@ -145,7 +145,7 @@ describe("checkPotentialMatches", () => {
   test("returns a base score when only type and category match", async () => {
     const env = setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "lost-1": 100,
           "lost-wallet": 101,
           "found-1": 102
@@ -206,7 +206,7 @@ describe("checkPotentialMatches", () => {
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "lost-1": 100
         },
         "posts/lost-1": {
@@ -265,7 +265,7 @@ describe("checkPotentialMatches", () => {
 
     setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": activePosts,
+        "active_posts/uab/lost": activePosts,
         ...posts
       },
       translateResult: "alpha beta gamma"

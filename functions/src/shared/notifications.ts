@@ -142,7 +142,20 @@ export async function notifyMatchFound(
     let lang: SupportedLanguage = "es";
     try {
         const userLangSnap = await admin.database().ref(`users/${userId}/settings/language`).once("value");
-        const val = userLangSnap.val();
+        let val = userLangSnap.val();
+        
+        if (!val) {
+            const userPrefLangSnap = await admin.database().ref(`users/${userId}/settings/preferredLanguage`).once("value");
+            val = userPrefLangSnap.val();
+        }
+        
+        if (!val) {
+            const userSnap = await admin.database().ref(`users/${userId}`).once("value");
+            const userVal = userSnap.val() || {};
+            const settings = userVal.settings || {};
+            val = settings.preferredLanguage || settings.language || userVal.preferredLanguage || userVal.language;
+        }
+
         if (val === "ca" || val === "es" || val === "en") {
             lang = val;
         }

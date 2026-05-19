@@ -54,6 +54,13 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
                 .ref(`active_posts/${post.center_id}/${event.params.postId}`)
                 .set(post.created_at)
         );
+        if (post.type) {
+            tasks.push(
+                admin.database()
+                    .ref(`active_posts/${post.center_id}/${post.type}/${event.params.postId}`)
+                    .set(post.created_at)
+            );
+        }
     }
 
     // Traducción en segundo plano para habilitar compatibilidad multiidioma en búsquedas
@@ -102,8 +109,26 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
 
     // Mantener el índice de publicaciones activas sincronizado para el feed de búsqueda
     const indexRef = admin.database().ref(`active_posts/${after.center_id}/${event.params.postId}`);
+    const typeIndexRef = admin.database().ref(`active_posts/${after.center_id}/${after.type}/${event.params.postId}`);
     const isActive = after.status === "active" && after.is_deleted === false;
-    tasks.push(isActive ? indexRef.set(after.created_at) : indexRef.remove());
+
+    if (isActive) {
+        tasks.push(indexRef.set(after.created_at));
+        if (after.type) {
+            if (before && before.type && before.type !== after.type) {
+                tasks.push(admin.database().ref(`active_posts/${before.center_id}/${before.type}/${event.params.postId}`).remove());
+            }
+            tasks.push(typeIndexRef.set(after.created_at));
+        }
+    } else {
+        tasks.push(indexRef.remove());
+        if (after.type) {
+            tasks.push(typeIndexRef.remove());
+        }
+        if (before?.type) {
+            tasks.push(admin.database().ref(`active_posts/${before.center_id}/${before.type}/${event.params.postId}`).remove());
+        }
+    }
 
     // Detectar cambios en título o imagen para propagar metadatos a chats existentes
     const titleChanged = before?.title !== after?.title;
@@ -183,9 +208,22 @@ export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any
     const before = event.data.val();
     if (!before?.center_id) return null;
 
-    return admin.database()
-        .ref(`active_posts/${before.center_id}/${event.params.postId}`)
-        .remove();
+    const tasks: Promise<any>[] = [
+        admin.database()
+            .ref(`active_posts/${before.center_id}/${event.params.postId}`)
+            .remove()
+    ];
+
+    if (before.type) {
+        tasks.push(
+            admin.database()
+                .ref(`active_posts/${before.center_id}/${before.type}/${event.params.postId}`)
+                .remove()
+        );
+    }
+
+    await Promise.all(tasks);
+    return null;
 });
 
 /**
@@ -212,10 +250,10 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
 
         const targetType = newPost.type === "found" ? "lost" : "found";
 
-        // Obtener la lista de posts activos en el centro
+        // Obtener la lista de posts activos en el centro del tipo opuesto
         const activePostsSnapshot = await admin
             .database()
-            .ref(`active_posts/${newPost.center_id}`)
+            .ref(`active_posts/${newPost.center_id}/${targetType}`)
             .once("value");
 
         if (!activePostsSnapshot.exists()) return;

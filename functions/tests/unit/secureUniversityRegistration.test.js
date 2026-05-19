@@ -204,4 +204,79 @@ describe("secureUniversityRegistration", () => {
 
     expect(env.writes[0].value.settings.language).toBe("ca");
   });
+
+  test("uses the preferredLanguage key in the created profile settings", async () => {
+    const env = setupCallableTestEnv({
+      createUserResult: { uid: "uid-en" },
+      onceByQuery: {
+        [queryKey("centers", "email_domains/uab_cat", true)]: {
+          uab: {
+            id: "uab",
+            is_active: true
+          }
+        }
+      }
+    });
+    const { secureUniversityRegistration } = require("../../lib/auth/secureUniversityRegistration");
+
+    await secureUniversityRegistration({
+      data: {
+        email: "student@uab.cat",
+        password: "secret123",
+        name: "Ada",
+        preferredLanguage: "en"
+      }
+    });
+
+    expect(env.writes[0].value.settings.language).toBe("en");
+  });
+
+  test("rejects an unsupported language", async () => {
+    setupCallableTestEnv({
+      onceByQuery: {
+        [queryKey("centers", "email_domains/uab_cat", true)]: {
+          uab: {
+            id: "uab",
+            is_active: true
+          }
+        }
+      }
+    });
+    const { secureUniversityRegistration } = require("../../lib/auth/secureUniversityRegistration");
+
+    await expect(secureUniversityRegistration({
+      data: {
+        email: "student@uab.cat",
+        password: "secret123",
+        name: "Ada",
+        preferredLanguage: "fr"
+      }
+    })).rejects.toMatchObject({ code: "invalid-argument" });
+  });
+
+  test("uses default language 'es' if preferredLanguage is empty", async () => {
+    const env = setupCallableTestEnv({
+      createUserResult: { uid: "uid-default" },
+      onceByQuery: {
+        [queryKey("centers", "email_domains/uab_cat", true)]: {
+          uab: {
+            id: "uab",
+            is_active: true
+          }
+        }
+      }
+    });
+    const { secureUniversityRegistration } = require("../../lib/auth/secureUniversityRegistration");
+
+    await secureUniversityRegistration({
+      data: {
+        email: "student@uab.cat",
+        password: "secret123",
+        name: "Ada",
+        preferredLanguage: ""
+      }
+    });
+
+    expect(env.writes[0].value.settings.language).toBe("es");
+  });
 });

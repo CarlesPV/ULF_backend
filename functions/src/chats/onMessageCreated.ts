@@ -93,7 +93,18 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                         }
 
                         // Internacionalización (i18n): Obtener la cadena en el idioma correspondiente (es, ca, en)
-                        const userLang: SupportedLanguage = settings.language || "en";
+                        let userLang: SupportedLanguage = "es";
+                        let rawLang = settings.preferredLanguage || settings.language;
+                        if (!rawLang) {
+                            const userSnap = await admin.database()
+                                .ref(`users/${memberId}`)
+                                .once("value");
+                            const userVal = userSnap.val() || {};
+                            rawLang = userVal.preferredLanguage || userVal.language;
+                        }
+                        if (rawLang === "es" || rawLang === "en" || rawLang === "ca") {
+                            userLang = rawLang;
+                        }
                         const notificationTitle = getNotificationString("new_message_title", userLang);
 
                         // Consultar los tokens de Firebase Cloud Messaging (FCM) registrados por el usuario
