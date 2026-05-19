@@ -45,8 +45,8 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     // Buscar objetos en la categoría contraria para emparejamiento
     const targetType = (type === "found") ? "lost" : "found";
 
-    // Consultar identificadores de posts activos usando el índice secundario del centro
-    const activeRefs = await admin.database().ref(`active_posts/${center_id}`).once("value");
+    // Consultar identificadores de posts activos usando el índice secundario del centro filtrado por tipo objetivo
+    const activeRefs = await admin.database().ref(`active_posts/${center_id}/${targetType}`).once("value");
     if (!activeRefs.exists()) return { matches: [] };
 
     const activeIds = Object.keys(activeRefs.val());

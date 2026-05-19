@@ -38,6 +38,14 @@ export interface Post {
 
 export type SupportedLanguage = "es" | "en" | "ca";
 
+export interface RegistrationPayload {
+    email: string;
+    password?: string;
+    name: string;
+    preferredLanguage?: SupportedLanguage;
+    language?: SupportedLanguage;
+}
+
 export interface UserProfile {
     id: string;
     name: string;

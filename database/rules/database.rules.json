@@ -20,6 +20,17 @@
                 },
                 "center_id": {
                     ".validate": "root.child('centers').child(newData.val()).exists()"
+                },
+                "settings": {
+                    "language": {
+                        ".validate": "newData.isString() && newData.val().matches(/^(es|en|ca)$/)"
+                    },
+                    "push_notifications": {
+                        ".validate": "newData.isBoolean()"
+                    },
+                    "dark_mode": {
+                        ".validate": "newData.isBoolean()"
+                    }
                 }
             }
         },
@@ -57,7 +68,13 @@
                 ".read": "auth != null",
                 ".indexOn": [
                     ".value"
-                ]
+                ],
+                "$type": {
+                    ".read": "auth != null",
+                    ".indexOn": [
+                        ".value"
+                    ]
+                }
             }
         },
         "post_views": {

@@ -80,16 +80,20 @@ describe("post triggers", () => {
       status: "active",
       is_deleted: false,
       created_at: 123,
+      type: "lost",
       description: "Llaves azules"
     }, "post-1", update));
 
-    expect(env.writes).toEqual([
-      {
-        op: "set",
-        path: "active_posts/uab/post-1",
-        value: 123
-      }
-    ]);
+    expect(env.writes).toContainEqual({
+      op: "set",
+      path: "active_posts/uab/post-1",
+      value: 123
+    });
+    expect(env.writes).toContainEqual({
+      op: "set",
+      path: "active_posts/uab/lost/post-1",
+      value: 123
+    });
     expect(env.translateText).toHaveBeenCalledWith("Llaves azules", "es");
     expect(update).toHaveBeenCalledWith({
       translated_description: "blue keys"
@@ -124,16 +128,20 @@ describe("post triggers", () => {
       status: "active",
       is_deleted: false,
       created_at: 123,
+      type: "lost",
       description: "Llaves azules"
     }, "post-1", update));
 
-    expect(env.writes).toEqual([
-      {
-        op: "set",
-        path: "active_posts/uab/post-1",
-        value: 123
-      }
-    ]);
+    expect(env.writes).toContainEqual({
+      op: "set",
+      path: "active_posts/uab/post-1",
+      value: 123
+    });
+    expect(env.writes).toContainEqual({
+      op: "set",
+      path: "active_posts/uab/lost/post-1",
+      value: 123
+    });
     expect(update).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalled();
   });
@@ -142,7 +150,7 @@ describe("post triggers", () => {
     const env = setupPostTriggerEnv({
       translateResult: "red keychain",
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "lost-1": 100,
           "lost-low": 101
         },
@@ -191,6 +199,11 @@ describe("post triggers", () => {
       path: "active_posts/uab/new-post",
       value: 123
     });
+    expect(env.writes).toContainEqual({
+      op: "set",
+      path: "active_posts/uab/found/new-post",
+      value: 123
+    });
     expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
     expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
       token: "token-owner-1",
@@ -204,7 +217,7 @@ describe("post triggers", () => {
   test("onPostCreated limits automatic match notifications to the top five scores", async () => {
     const activePosts = {};
     const onceByPath = {
-      "active_posts/uab": activePosts
+      "active_posts/uab/lost": activePosts
     };
     const words = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
 
@@ -258,7 +271,7 @@ describe("post triggers", () => {
     const env = setupPostTriggerEnv({
       translateResult: "red keychain",
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "lost-1": 100
         },
         "posts/lost-1": {
@@ -295,6 +308,11 @@ describe("post triggers", () => {
       path: "active_posts/uab/new-post",
       value: 123
     });
+    expect(env.writes).toContainEqual({
+      op: "set",
+      path: "active_posts/uab/found/new-post",
+      value: 123
+    });
     expect(notifyMultipleUsersOfMatch).toHaveBeenCalled();
   });
 
@@ -306,16 +324,20 @@ describe("post triggers", () => {
       center_id: "uab",
       status: "active",
       is_deleted: false,
-      created_at: 456
+      created_at: 456,
+      type: "lost"
     }, "post-2"));
 
-    expect(env.writes).toEqual([
-      {
-        op: "set",
-        path: "active_posts/uab/post-2",
-        value: 456
-      }
-    ]);
+    expect(env.writes).toContainEqual({
+      op: "set",
+      path: "active_posts/uab/post-2",
+      value: 456
+    });
+    expect(env.writes).toContainEqual({
+      op: "set",
+      path: "active_posts/uab/lost/post-2",
+      value: 456
+    });
   });
 
   test("onPostUpdated removes resolved or deleted posts from the active index", async () => {
@@ -326,15 +348,18 @@ describe("post triggers", () => {
       center_id: "uab",
       status: "returned",
       is_deleted: false,
-      created_at: 456
+      created_at: 456,
+      type: "lost"
     }, "post-2"));
 
-    expect(env.writes).toEqual([
-      {
-        op: "remove",
-        path: "active_posts/uab/post-2"
-      }
-    ]);
+    expect(env.writes).toContainEqual({
+      op: "remove",
+      path: "active_posts/uab/post-2"
+    });
+    expect(env.writes).toContainEqual({
+      op: "remove",
+      path: "active_posts/uab/lost/post-2"
+    });
   });
 
   test("onPostDeleted removes physically deleted posts from the active index", async () => {
@@ -342,15 +367,18 @@ describe("post triggers", () => {
     const { onPostDeleted } = require("../../lib/posts/postTriggers");
 
     await onPostDeleted(deletedEvent({
-      center_id: "uab"
+      center_id: "uab",
+      type: "lost"
     }, "post-3"));
 
-    expect(env.writes).toEqual([
-      {
-        op: "remove",
-        path: "active_posts/uab/post-3"
-      }
-    ]);
+    expect(env.writes).toContainEqual({
+      op: "remove",
+      path: "active_posts/uab/post-3"
+    });
+    expect(env.writes).toContainEqual({
+      op: "remove",
+      path: "active_posts/uab/lost/post-3"
+    });
   });
 
   test("onPostUpdated syncs title and imageUrl to existing chats", async () => {
@@ -407,6 +435,7 @@ describe("post triggers", () => {
         status: "active",
         is_deleted: false,
         created_at: 123,
+        type: "lost",
         coords: { lat: 41.5008587, lng: 2.1042399 }
       }));
 
@@ -429,6 +458,7 @@ describe("post triggers", () => {
         center_id: "uab",
         status: "active",
         is_deleted: false,
+        type: "lost",
         coords: { lat: 41.385063, lng: 2.173403 }
       }, "post-fail", update, remove));
 
@@ -464,6 +494,7 @@ describe("post triggers", () => {
         status: "active",
         is_deleted: false,
         created_at: 123,
+        type: "lost",
         coords: { lat: 41.495, lng: 2.1042399 }
       }, "post-success-outside-box", update, remove));
 
@@ -493,6 +524,7 @@ describe("post triggers", () => {
         status: "active",
         is_deleted: false,
         created_at: 123,
+        type: "lost",
         // Coordenadas a ~350m de distancia (fuera del mini polígono, pero dentro del radio de 1100m + 50m de tolerancia)
         coords: { lat: 41.5008587, lng: 2.100 }
       }));
@@ -521,6 +553,7 @@ describe("post triggers", () => {
         center_id: "uab",
         status: "active",
         is_deleted: false,
+        type: "lost",
         // Coordenadas a ~2150m del centro (fuera de radio + tolerancia de 1150m)
         coords: { lat: 41.52, lng: 2.10 }
       }, "post-fail-poly", update, remove));
@@ -543,6 +576,7 @@ describe("post triggers", () => {
         status: "active",
         is_deleted: false,
         created_at: 123,
+        type: "lost",
         coords: { lat: 41.5111587, lng: 2.1042399 } // ~1145m (dentro de 1150m)
       }));
 
@@ -564,6 +598,7 @@ describe("post triggers", () => {
         center_id: "uab",
         status: "active",
         is_deleted: false,
+        type: "lost",
         coords: { lat: 41.5112587, lng: 2.1042399 } // ~1156m (fuera de 1150m)
       }, "post-fail-tolerance", update, remove));
 
