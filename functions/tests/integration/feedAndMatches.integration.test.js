@@ -64,7 +64,10 @@ describe("integration: feed and matching", () => {
       }),
       "active_posts/uab/lost-bag": 2000,
       "active_posts/uab/feed-lost-keys": 3000,
-      "active_posts/uab/found-bag": 4000
+      "active_posts/uab/found-bag": 4000,
+      "active_posts/uab/lost/lost-bag": 2000,
+      "active_posts/uab/lost/feed-lost-keys": 3000,
+      "active_posts/uab/found/found-bag": 4000
     });
     const client = await signInClient(createClientApp(), "searcher@uab.cat");
 
@@ -116,7 +119,11 @@ describe("integration: feed and matching", () => {
       "active_posts/uab/lost-keys": 2000,
       "active_posts/uab/lost-wallet": 3000,
       "active_posts/uab/found-keys": 4000,
-      "active_posts/uab/deleted-keys": 5000
+      "active_posts/uab/deleted-keys": 5000,
+      "active_posts/uab/lost/lost-keys": 2000,
+      "active_posts/uab/lost/lost-wallet": 3000,
+      "active_posts/uab/found/found-keys": 4000,
+      "active_posts/uab/lost/deleted-keys": 5000
     });
     const client = await signInClient(createClientApp(), "searcher@uab.cat");
 
