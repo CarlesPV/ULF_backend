@@ -105,8 +105,9 @@ describe("onImageUploaded trigger", () => {
         expect(sharp).not.toHaveBeenCalled();
     });
 
-    test("handlePostImage preserves client token when optimizing a webp upload in place", async () => {
+    test("onImageUploaded ignores webp uploads in posts/ even without processed metadata", async () => {
         const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+        const sharp = require("sharp");
 
         const event = {
             data: {
@@ -121,25 +122,55 @@ describe("onImageUploaded trigger", () => {
 
         await onImageUploaded(event);
 
-        expect(bucketMock.upload).toHaveBeenCalledWith(
-            expect.stringContaining("opt_post-1"),
-            expect.objectContaining({
-                destination: "posts/post-1/user_123.webp",
-                metadata: expect.objectContaining({
-                    metadata: expect.objectContaining({
-                        firebaseStorageDownloadTokens: "client-token"
-                    })
-                })
-            })
-        );
+        expect(sharp).not.toHaveBeenCalled();
+        expect(bucketMock.upload).not.toHaveBeenCalled();
+        expect(env.writes).toEqual([]);
+    });
 
-        expect(env.writes).toContainEqual({
-            op: "update",
-            path: "posts/post-1",
-            value: expect.objectContaining({
-                imageUrl: expect.stringContaining("token=client-token")
-            })
-        });
+    test("onImageUploaded ignores images with optimized metadata", async () => {
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+        const sharp = require("sharp");
+
+        const event = {
+            data: {
+                name: "posts/post-1/image-1.jpg",
+                bucket: "test-bucket",
+                contentType: "image/jpeg",
+                metadata: {
+                    optimized: "true"
+                }
+            }
+        };
+
+        await onImageUploaded(event);
+
+        expect(sharp).not.toHaveBeenCalled();
+        expect(bucketMock.upload).not.toHaveBeenCalled();
+        expect(env.writes).toEqual([]);
+    });
+
+    test("onImageUploaded ignores images with customMetadata optimized", async () => {
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+        const sharp = require("sharp");
+
+        const event = {
+            data: {
+                name: "posts/post-1/image-1.jpg",
+                bucket: "test-bucket",
+                contentType: "image/jpeg",
+                metadata: {
+                    customMetadata: {
+                        optimized: "true"
+                    }
+                }
+            }
+        };
+
+        await onImageUploaded(event);
+
+        expect(sharp).not.toHaveBeenCalled();
+        expect(bucketMock.upload).not.toHaveBeenCalled();
+        expect(env.writes).toEqual([]);
     });
 
     test("onImageUploaded ignores unrelated storage paths", async () => {
@@ -297,8 +328,9 @@ describe("onImageUploaded trigger", () => {
         });
     });
 
-    test("handleProfileImage handles dynamic filenames with timestamp and webp format", async () => {
+    test("handleProfileImage ignores dynamic filenames with webp format", async () => {
         const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+        const sharp = require("sharp");
         
         const event = {
             data: {
@@ -310,15 +342,7 @@ describe("onImageUploaded trigger", () => {
 
         await onImageUploaded(event);
 
-        expect(bucketMock.upload).toHaveBeenCalledWith(
-            expect.stringContaining("optimized_user_abc"),
-            expect.objectContaining({ 
-                destination: "users/user_abc/profile_image.webp",
-                metadata: expect.objectContaining({ 
-                    contentType: "image/webp",
-                    cacheControl: "public, max-age=3600, s-maxage=3600"
-                })
-            })
-        );
+        expect(sharp).not.toHaveBeenCalled();
+        expect(bucketMock.upload).not.toHaveBeenCalled();
     });
 });

@@ -29,7 +29,14 @@ function getFirstDownloadToken(metadata: { [key: string]: any } | undefined): st
  */
 export const onImageUploaded = onObjectFinalized(async (event) => {
     const filePath = event.data.name; 
-    const metadata = event.data.metadata || {};
+    const metadata = (event.data.metadata || {}) as any;
+
+    // Validar si el objeto ya es .webp o está optimizado para detener la ejecución inmediatamente sin borrar el archivo
+    const isWebp = filePath.toLowerCase().endsWith(".webp");
+    const isOptimized = metadata.optimized === "true" || metadata.customMetadata?.optimized === "true";
+    if (isWebp || isOptimized) {
+        return null;
+    }
 
     // Evitar bucles infinitos si la imagen ya fue procesada por el backend
     if (metadata.processed === "true") {
@@ -211,7 +218,8 @@ async function handlePostImage(event: any) {
                 const matches = oldImageUrl.match(/\/o\/([^?#]+)/);
                 if (matches && matches[1]) {
                     const oldPathDecoded = decodeURIComponent(matches[1]);
-                    if (oldPathDecoded !== destination) {
+                    // Evitar eliminar la imagen original que se está procesando actualmente en este bloque
+                    if (oldPathDecoded !== destination && oldPathDecoded !== filePath) {
                         await bucket.file(oldPathDecoded).delete();
                         console.log(`Archivo antiguo de Storage eliminado con éxito: ${oldPathDecoded}`);
                     }
@@ -225,6 +233,7 @@ async function handlePostImage(event: any) {
         await admin.database().ref(`posts/${postId}`).update({
             postImageUrl: publicUrl,
             imageUrl: publicUrl,
+            photo_path: destination,
             vision_labels: translatedLabels,
             updated_at: admin.database.ServerValue.TIMESTAMP
         });
