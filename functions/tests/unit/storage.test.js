@@ -46,7 +46,7 @@ describe("onImageUploaded trigger", () => {
         jest.restoreAllMocks();
     });
 
-    test("handlePostImage optimizes image and updates database", async () => {
+    test("handlePostImage processes image and updates database with labels", async () => {
         const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
         
         const event = {
@@ -59,31 +59,23 @@ describe("onImageUploaded trigger", () => {
 
         await onImageUploaded(event);
 
-        // Verify sharp was called
+        // Verify sharp was not called
         const sharp = require("sharp");
-        expect(sharp).toHaveBeenCalled();
-        expect(sharp().resize).toHaveBeenCalledWith(1080, 1080, expect.any(Object));
+        expect(sharp).not.toHaveBeenCalled();
 
-        // Verify original deletion
-        expect(bucketMock.file).toHaveBeenCalledWith("posts/post-1/image-1.jpg");
+        // Verify original deletion was not called
+        expect(bucketMock.file().delete).not.toHaveBeenCalled();
 
-        // Verify upload was called
-        expect(bucketMock.upload).toHaveBeenCalledWith(
-            expect.stringContaining("opt_post-1"),
-            expect.objectContaining({ 
-                destination: "posts/post-1/image-1.jpg.webp",
-                metadata: expect.objectContaining({ contentType: "image/webp" })
-            })
-        );
+        // Verify upload was not called
+        expect(bucketMock.upload).not.toHaveBeenCalled();
 
         // Verify DB update
         expect(env.writes).toContainEqual({
             op: "update",
             path: "posts/post-1",
-            value: expect.objectContaining({
-                imageUrl: expect.stringContaining("image-1.jpg.webp"),
+            value: {
                 vision_labels: ["etiqueta", "prueba"]
-            })
+            }
         });
     });
 
@@ -105,9 +97,8 @@ describe("onImageUploaded trigger", () => {
         expect(sharp).not.toHaveBeenCalled();
     });
 
-    test("onImageUploaded ignores webp uploads in posts/ even without processed metadata", async () => {
+    test("onImageUploaded processes webp uploads in posts/ even without processed metadata", async () => {
         const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
-        const sharp = require("sharp");
 
         const event = {
             data: {
@@ -122,14 +113,17 @@ describe("onImageUploaded trigger", () => {
 
         await onImageUploaded(event);
 
-        expect(sharp).not.toHaveBeenCalled();
-        expect(bucketMock.upload).not.toHaveBeenCalled();
-        expect(env.writes).toEqual([]);
+        expect(env.writes).toContainEqual({
+            op: "update",
+            path: "posts/post-1",
+            value: {
+                vision_labels: ["etiqueta", "prueba"]
+            }
+        });
     });
 
-    test("onImageUploaded ignores images with optimized metadata", async () => {
+    test("onImageUploaded processes images with optimized metadata", async () => {
         const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
-        const sharp = require("sharp");
 
         const event = {
             data: {
@@ -144,14 +138,17 @@ describe("onImageUploaded trigger", () => {
 
         await onImageUploaded(event);
 
-        expect(sharp).not.toHaveBeenCalled();
-        expect(bucketMock.upload).not.toHaveBeenCalled();
-        expect(env.writes).toEqual([]);
+        expect(env.writes).toContainEqual({
+            op: "update",
+            path: "posts/post-1",
+            value: {
+                vision_labels: ["etiqueta", "prueba"]
+            }
+        });
     });
 
-    test("onImageUploaded ignores images with customMetadata optimized", async () => {
+    test("onImageUploaded processes images with customMetadata optimized", async () => {
         const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
-        const sharp = require("sharp");
 
         const event = {
             data: {
@@ -168,9 +165,13 @@ describe("onImageUploaded trigger", () => {
 
         await onImageUploaded(event);
 
-        expect(sharp).not.toHaveBeenCalled();
-        expect(bucketMock.upload).not.toHaveBeenCalled();
-        expect(env.writes).toEqual([]);
+        expect(env.writes).toContainEqual({
+            op: "update",
+            path: "posts/post-1",
+            value: {
+                vision_labels: ["etiqueta", "prueba"]
+            }
+        });
     });
 
     test("onImageUploaded ignores unrelated storage paths", async () => {
@@ -289,7 +290,7 @@ describe("onImageUploaded trigger", () => {
             }
         });
 
-        expect(fs.unlinkSync).toHaveBeenCalledTimes(2);
+        expect(fs.unlinkSync).toHaveBeenCalledTimes(1);
     });
 
     test("handleProfileImage optimizes image and updates user profile with timestamp", async () => {
