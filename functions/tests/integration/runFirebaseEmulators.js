@@ -19,7 +19,7 @@ const child = spawn(process.execPath, [
   "--project",
   "demo-ulf",
   "--only",
-  "auth,database,functions",
+  "auth,database,functions,storage",
   "cd functions && node node_modules/jest/bin/jest.js --config jest.integration.config.js --runInBand --forceExit"
 ], {
   cwd: repoRoot,

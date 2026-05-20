@@ -56,7 +56,8 @@ export const markNotificationsRead = functions.https.onCall(async (request) => {
                 const updates: { [key: string]: boolean } = {};
                 snapshot.forEach((child) => {
                     const notifId = child.key;
-                    if (notifId) {
+                    const notifVal = child.val();
+                    if (notifId && notifVal && notifVal.read !== true) {
                         updates[`users/${uid}/notifications/${notifId}/read`] = true;
                     }
                 });
@@ -101,10 +102,15 @@ export const markNotificationsRead = functions.https.onCall(async (request) => {
                     I18N_STRINGS.errors.item_not_found
                 );
             }
-            updates[`users/${uid}/notifications/${notifId}/read`] = true;
+            const notifVal = existingNotificationsValue[notifId];
+            if (notifVal && notifVal.read !== true) {
+                updates[`users/${uid}/notifications/${notifId}/read`] = true;
+            }
         }
 
-        await admin.database().ref().update(updates);
+        if (Object.keys(updates).length > 0) {
+            await admin.database().ref().update(updates);
+        }
 
         return { success: true };
 
