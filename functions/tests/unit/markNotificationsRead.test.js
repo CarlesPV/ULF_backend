@@ -59,12 +59,13 @@ describe("markNotificationsRead", () => {
       .rejects.toMatchObject({ code: "not-found" });
   });
 
-  test("marks multiple notifications as read if notificationIds is provided", async () => {
+  test("marks multiple notifications as read if notificationIds is provided (omitting already read ones)", async () => {
     const env = setupCallableTestEnv({
       onceByPath: {
         "users/user-1/notifications": {
           "notif-A": { id: "notif-A", read: false },
-          "notif-B": { id: "notif-B", read: false }
+          "notif-B": { id: "notif-B", read: false },
+          "notif-C": { id: "notif-C", read: true }
         }
       }
     });
@@ -72,7 +73,7 @@ describe("markNotificationsRead", () => {
     const { markNotificationsRead } = require("../../lib/notifications/markNotificationsRead");
 
     const result = await markNotificationsRead(authenticatedRequest({
-      notificationIds: ["notif-A", "notif-B"]
+      notificationIds: ["notif-A", "notif-B", "notif-C"]
     }));
 
     expect(result).toEqual({ success: true });
@@ -87,12 +88,13 @@ describe("markNotificationsRead", () => {
     });
   });
 
-  test("marks all notifications as read if all: true is provided", async () => {
+  test("marks all notifications as read if all: true is provided (omitting already read ones)", async () => {
     const env = setupCallableTestEnv({
       onceByPath: {
         "users/user-1/notifications": {
           "notif-X": { id: "notif-X", read: false },
-          "notif-Y": { id: "notif-Y", read: false }
+          "notif-Y": { id: "notif-Y", read: false },
+          "notif-Z": { id: "notif-Z", read: true }
         }
       }
     });

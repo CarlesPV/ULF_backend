@@ -18,6 +18,14 @@ const {
   connectFunctionsEmulator,
   httpsCallable
 } = require("firebase/functions");
+const {
+  getStorage,
+  connectStorageEmulator,
+  ref: storageRef,
+  uploadBytes,
+  deleteObject,
+  getMetadata
+} = require("firebase/storage");
 
 const PROJECT_ID = "demo-ulf";
 const DEFAULT_PASSWORD = "secret123";
@@ -158,20 +166,25 @@ function createClientApp() {
     apiKey: "demo-api-key",
     authDomain: `${PROJECT_ID}.firebaseapp.com`,
     databaseURL: `https://${PROJECT_ID}.firebaseio.com`,
+    storageBucket: `${PROJECT_ID}.appspot.com`,
     projectId: PROJECT_ID
   }, `integration-${Date.now()}-${++appCounter}`);
 
   const auth = getAuth(app);
   const database = getDatabase(app);
   const functions = getFunctions(app);
+  const storage = getStorage(app);
+  
   const authHost = splitHostPort(process.env.FIREBASE_AUTH_EMULATOR_HOST, "127.0.0.1", 9099);
   const dbHost = splitHostPort(process.env.FIREBASE_DATABASE_EMULATOR_HOST, "127.0.0.1", 9000);
+  const storageHost = splitHostPort(process.env.FIREBASE_STORAGE_EMULATOR_HOST, "127.0.0.1", 9199);
 
   connectAuthEmulator(auth, `http://${authHost.host}:${authHost.port}`, { disableWarnings: true });
   connectDatabaseEmulator(database, dbHost.host, dbHost.port);
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+  connectStorageEmulator(storage, storageHost.host, storageHost.port);
 
-  const client = { app, auth, database, functions };
+  const client = { app, auth, database, functions, storage };
   clientApps.push(app);
   return client;
 }
@@ -242,6 +255,12 @@ module.exports = {
     get,
     ref,
     set
+  },
+  firebaseStorage: {
+    ref: storageRef,
+    uploadBytes,
+    deleteObject,
+    getMetadata
   },
   resetEmulators,
   seedCenter,
