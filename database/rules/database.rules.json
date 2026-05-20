@@ -22,9 +22,13 @@
                     ".validate": "root.child('centers').child(newData.val()).exists()"
                 },
                 "settings": {
+                    ".read": "auth != null && auth.uid === $uid",
                     ".write": "auth != null && auth.uid === $uid",
                     "language": {
                         ".validate": "newData.isString() && newData.val().matches(/^(es|en|ca)$/)"
+                    },
+                    "pushNotificationsEnabled": {
+                        ".validate": "newData.isBoolean()"
                     },
                     "push_notifications": {
                         ".read": "auth != null && auth.uid === $uid",

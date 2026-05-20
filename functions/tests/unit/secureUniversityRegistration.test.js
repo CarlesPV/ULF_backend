@@ -41,6 +41,7 @@ describe("secureUniversityRegistration", () => {
           name: "Ada",
           settings: {
             language: "es",
+            pushNotificationsEnabled: true,
             push_notifications: true,
             dark_mode: false
           },

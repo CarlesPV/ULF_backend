@@ -56,6 +56,7 @@ export interface UserProfile {
     photoUpdatedAt?: number;
     settings?: {
         language?: SupportedLanguage;
+        pushNotificationsEnabled?: boolean;
         push_notifications?: boolean;
         dark_mode?: boolean;
     };

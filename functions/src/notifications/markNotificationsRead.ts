@@ -32,6 +32,7 @@ export const markNotificationsRead = functions.https.onCall(async (request) => {
     }
 
     const { notificationId, notificationIds, all } = request.data || {};
+    const MAX_NOTIFICATION_IDS = 500;
 
     const sanitizeId = (id: any): string => {
         if (typeof id !== "string" || !/^[a-zA-Z0-9\-_]+$/.test(id)) {
@@ -56,15 +57,15 @@ export const markNotificationsRead = functions.https.onCall(async (request) => {
                 snapshot.forEach((child) => {
                     const notifId = child.key;
                     if (notifId) {
-                        updates[`${notifId}/read`] = true;
+                        updates[`users/${uid}/notifications/${notifId}/read`] = true;
                     }
                 });
 
                 if (Object.keys(updates).length > 0) {
-                    await notifsRef.update(updates);
+                    await admin.database().ref().update(updates);
                 }
             }
-            return { success: true, message: "Todas las notificaciones marcadas como leídas." };
+            return { success: true };
         }
 
         // Si se especifican IDs particulares
@@ -76,37 +77,36 @@ export const markNotificationsRead = functions.https.onCall(async (request) => {
                     I18N_STRINGS.errors.invalid_argument
                 );
             }
-            idsToMark = notificationIds.map(sanitizeId);
+            idsToMark = [...new Set(notificationIds.map(sanitizeId))];
         } else if (notificationId) {
             idsToMark = [sanitizeId(notificationId)];
         }
 
-        if (idsToMark.length === 0) {
+        if (idsToMark.length === 0 || idsToMark.length > MAX_NOTIFICATION_IDS) {
             throw new functions.https.HttpsError(
                 "invalid-argument",
                 I18N_STRINGS.errors.invalid_argument
             );
         }
 
-        // Comprobar la propiedad y existencia de cada ID especificado antes de proceder (Zero Trust)
+        const existingNotifications = await notifsRef.once("value");
+        const existingNotificationsValue = existingNotifications.val() || {};
+
+        // Operación batch atómica sobre rutas absolutas de RTDB.
         const updates: { [key: string]: boolean } = {};
         for (const notifId of idsToMark) {
-            const notifSnap = await admin.database().ref(`users/${uid}/notifications/${notifId}`).once("value");
-            if (!notifSnap.exists()) {
+            if (!Object.prototype.hasOwnProperty.call(existingNotificationsValue, notifId)) {
                 throw new functions.https.HttpsError(
                     "not-found",
                     I18N_STRINGS.errors.item_not_found
                 );
             }
-            updates[`${notifId}/read`] = true;
+            updates[`users/${uid}/notifications/${notifId}/read`] = true;
         }
 
-        // Operación Batch / Actualización atómica de múltiples paths en RTDB
-        if (Object.keys(updates).length > 0) {
-            await notifsRef.update(updates);
-        }
+        await admin.database().ref().update(updates);
 
-        return { success: true, message: "Notificaciones marcadas como leídas." };
+        return { success: true };
 
     } catch (error) {
         if (error instanceof functions.https.HttpsError) {

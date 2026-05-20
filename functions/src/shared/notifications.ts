@@ -31,6 +31,26 @@ export interface NotificationPayload {
 }
 
 /**
+ * Determina si el usuario permite notificaciones push.
+ *
+ * Solo un valor explícito `false` en `/users/{userId}/settings/pushNotificationsEnabled`
+ * desactiva FCM. Si el ajuste no existe o es `true`, se permite el envío.
+ */
+export async function isPushNotificationEnabled(userId: string): Promise<boolean> {
+    try {
+        const settingsSnap = await admin
+            .database()
+            .ref(`users/${userId}/settings/pushNotificationsEnabled`)
+            .once("value");
+
+        return settingsSnap.val() !== false;
+    } catch (error) {
+        console.error(`Error leyendo preferencias push del usuario ${userId}:`, error);
+        return true;
+    }
+}
+
+/**
  * Transmite una notificación push a través de Firebase Cloud Messaging (FCM) a todos los dispositivos registrados de un usuario.
  * 
  * Este método implementa la siguiente lógica atómica y robusta:
@@ -51,6 +71,11 @@ export async function sendNotificationToUser(
     payload: NotificationPayload
 ): Promise<boolean> {
     try {
+        const pushEnabled = await isPushNotificationEnabled(userId);
+        if (!pushEnabled) {
+            return false;
+        }
+
         const tokensSnapshot = await admin
             .database()
             .ref(`users/${userId}/fcm_tokens`)

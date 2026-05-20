@@ -92,6 +92,7 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
             photo_path: "",
             settings: {
                 language: finalLanguage,
+                pushNotificationsEnabled: true,
                 push_notifications: true,
                 dark_mode: false
             },

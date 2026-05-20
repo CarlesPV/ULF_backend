@@ -60,6 +60,23 @@ describe("Match Notification System", () => {
         }));
     });
 
+    test("sendNotificationToUser skips FCM when push notifications are disabled", async () => {
+        const env = setupCallableTestEnv({
+            onceByPath: {
+                "users/user-1/settings/pushNotificationsEnabled": false,
+                "users/user-1/fcm_tokens": {
+                    "token-1": true
+                }
+            }
+        });
+        const { sendNotificationToUser } = require("../../lib/shared/notifications");
+
+        const result = await sendNotificationToUser("user-1", matchPayload());
+
+        expect(result).toBe(false);
+        expect(env.messagingApi.send).not.toHaveBeenCalled();
+    });
+
     test("sendNotificationToUser removes invalid FCM tokens and still succeeds for valid tokens", async () => {
         jest.spyOn(console, "error").mockImplementation(() => {});
         const invalidTokenError = new Error("invalid token");

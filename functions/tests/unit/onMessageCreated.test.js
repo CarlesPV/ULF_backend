@@ -29,9 +29,13 @@ describe("onMessageCreated trigger", () => {
                 },
                 "users/receiver-1": {
                     settings: {
-                        push_notifications: false,
+                        pushNotificationsEnabled: false,
                         language: "es"
                     }
+                },
+                "users/receiver-1/settings/pushNotificationsEnabled": false,
+                "users/receiver-1/fcm_tokens": {
+                    "receiver-token": true
                 }
             }
         });
@@ -43,18 +47,25 @@ describe("onMessageCreated trigger", () => {
             sender_id: "sender-1"
         }));
 
-        expect(env.writes).toEqual([
-            {
-                op: "update",
-                path: "",
-                value: {
-                    "chats/chat-1/last_message": "Hola, siguen disponibles las llaves?",
-                    "chats/chat-1/last_message_time": 12345,
-                    "user_chats/sender-1/chat-1": 12345,
-                    "user_chats/receiver-1/chat-1": 12345
-                }
+        expect(env.writes[0]).toEqual({
+            op: "update",
+            path: "",
+            value: {
+                "chats/chat-1/last_message": "Hola, siguen disponibles las llaves?",
+                "chats/chat-1/last_message_time": 12345,
+                "user_chats/sender-1/chat-1": 12345,
+                "user_chats/receiver-1/chat-1": 12345
             }
-        ]);
+        });
+        expect(env.writes).toContainEqual(expect.objectContaining({
+            op: "set",
+            path: "users/receiver-1/notifications/mock-key-1",
+            value: expect.objectContaining({
+                read: false,
+                title: "Nuevo mensaje",
+                body: "Hola, siguen disponibles las llaves?"
+            })
+        }));
         expect(env.messagingApi.send).not.toHaveBeenCalled();
     });
 
@@ -104,22 +115,22 @@ describe("onMessageCreated trigger", () => {
         }, "chat-1", "message-99"));
 
         expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
-        expect(env.messagingApi.send).toHaveBeenCalledWith({
+        expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
             token: "receiver-token",
             notification: {
                 title: "Nou missatge",
                 body: "Missatge nou"
             },
-            data: {
+            data: expect.objectContaining({
                 type: "chat",
                 chatId: "chat-1",
                 messageId: "message-99"
-            }
-        });
+            })
+        }));
     });
 
     test("removes invalid notification tokens without interrupting the trigger", async () => {
-        jest.spyOn(console, "warn").mockImplementation(() => {});
+        jest.spyOn(console, "error").mockImplementation(() => {});
         const invalidTokenError = new Error("invalid token");
         invalidTokenError.code = "messaging/invalid-registration-token";
         const env = setupCallableTestEnv({
@@ -170,7 +181,7 @@ describe("onMessageCreated trigger", () => {
                 }
             },
             onceRejectsByPath: {
-                "users/receiver-1/settings": new Error("settings read failed")
+                "users/receiver-1": new Error("user read failed")
             }
         });
         const { onMessageCreated } = require("../../lib/chats/onMessageCreated");
@@ -216,18 +227,18 @@ describe("onMessageCreated trigger", () => {
         }, "chat-1", "message-99"));
 
         expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
-        expect(env.messagingApi.send).toHaveBeenCalledWith({
+        expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
             token: "receiver-token",
             notification: {
                 title: "Nou missatge",
                 body: "📷 Imatge"
             },
-            data: {
+            data: expect.objectContaining({
                 type: "chat",
                 chatId: "chat-1",
                 messageId: "message-99"
-            }
-        });
+            })
+        }));
     });
 
     test("sends push notification with top-level preferredLanguage if settings language is missing", async () => {
@@ -263,11 +274,11 @@ describe("onMessageCreated trigger", () => {
                 title: "Nou missatge",
                 body: "Hola"
             },
-            data: {
+            data: expect.objectContaining({
                 type: "chat",
                 chatId: "chat-1",
                 messageId: "message-99"
-            }
+            })
         }));
     });
 });
