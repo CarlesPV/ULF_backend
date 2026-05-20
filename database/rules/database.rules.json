@@ -27,6 +27,12 @@
                     "language": {
                         ".validate": "newData.isString() && newData.val().matches(/^(es|en|ca)$/)"
                     },
+                    "theme": {
+                        ".validate": "newData.isString() && newData.val().matches(/^(light|dark|system)$/)"
+                    },
+                    "notificationsEnabled": {
+                        ".validate": "newData.isBoolean()"
+                    },
                     "pushNotificationsEnabled": {
                         ".validate": "newData.isBoolean()"
                     },

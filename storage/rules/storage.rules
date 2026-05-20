@@ -14,7 +14,9 @@ service firebase.storage {
       // Permitimos la creación y actualización a cualquier usuario autenticado (se procesará a WebP en handlePostImage)
       allow create, update: if isAuthenticated()
                             && request.resource.size < 5 * 1024 * 1024
-                            && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/octet-stream');
+                            && (request.resource.contentType == 'image/jpeg' 
+                                || request.resource.contentType == 'image/png' 
+                                || request.resource.contentType == 'image/webp');
                     
       // Permitimos la eliminación (la autoría final se valida en el backend y base de datos)
       allow delete: if isAuthenticated();
