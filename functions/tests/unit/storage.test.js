@@ -105,6 +105,43 @@ describe("onImageUploaded trigger", () => {
         expect(sharp).not.toHaveBeenCalled();
     });
 
+    test("handlePostImage preserves client token when optimizing a webp upload in place", async () => {
+        const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
+
+        const event = {
+            data: {
+                name: "posts/post-1/user_123.webp",
+                bucket: "test-bucket",
+                contentType: "image/webp",
+                metadata: {
+                    firebaseStorageDownloadTokens: "client-token"
+                }
+            }
+        };
+
+        await onImageUploaded(event);
+
+        expect(bucketMock.upload).toHaveBeenCalledWith(
+            expect.stringContaining("opt_post-1"),
+            expect.objectContaining({
+                destination: "posts/post-1/user_123.webp",
+                metadata: expect.objectContaining({
+                    metadata: expect.objectContaining({
+                        firebaseStorageDownloadTokens: "client-token"
+                    })
+                })
+            })
+        );
+
+        expect(env.writes).toContainEqual({
+            op: "update",
+            path: "posts/post-1",
+            value: expect.objectContaining({
+                imageUrl: expect.stringContaining("token=client-token")
+            })
+        });
+    });
+
     test("onImageUploaded ignores unrelated storage paths", async () => {
         const { onImageUploaded } = require("../../lib/storage/onImageUploaded");
         const sharp = require("sharp");

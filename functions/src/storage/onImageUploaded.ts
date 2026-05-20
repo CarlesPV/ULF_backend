@@ -8,6 +8,14 @@ import * as os from "os";
 import * as fs from "fs";
 import * as crypto from "crypto";
 
+function getFirstDownloadToken(metadata: { [key: string]: any } | undefined): string | null {
+    const tokenValue = metadata?.firebaseStorageDownloadTokens;
+    if (typeof tokenValue !== "string") return null;
+
+    const firstToken = tokenValue.split(",")[0]?.trim();
+    return firstToken || null;
+}
+
 /**
  * Trigger de Firebase Storage v2 que se activa automáticamente al completarse la subida de un archivo (onObjectFinalized).
  * 
@@ -88,7 +96,7 @@ async function handleProfileImage(event: any) {
         const downloadToken = crypto.randomUUID();
         await bucket.upload(optimizedFilePath, {
             destination,
-            metadata: { 
+            metadata: {
                 contentType: "image/webp",
                 cacheControl: "public, max-age=3600, s-maxage=3600",
                 metadata: {
@@ -136,6 +144,7 @@ async function handleProfileImage(event: any) {
 async function handlePostImage(event: any) {
     const filePath = event.data.name;
     const bucketName = event.data.bucket;
+    const metadata = event.data.metadata || {};
     const pathParts = filePath.split("/");
 
     if (pathParts.length < 3) return null;
@@ -160,7 +169,7 @@ async function handlePostImage(event: any) {
             : fileName;
         const destination = `posts/${postId}/${baseName}.webp`;
 
-        const downloadToken = crypto.randomUUID();
+        const downloadToken = getFirstDownloadToken(metadata) || crypto.randomUUID();
         await bucket.upload(optimizedFilePath, {
             destination,
             metadata: {
