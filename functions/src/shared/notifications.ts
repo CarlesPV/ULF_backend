@@ -70,7 +70,8 @@ export async function sendNotificationToUser(
                 body: payload.body,
             },
             data: {
-                type: payload.type,
+                type: payload.data.type || payload.type,
+                postId: payload.data.postId || "",
                 matchPostId: payload.data.matchPostId || "",
                 matchTitle: payload.data.matchTitle || "",
                 matchScore: payload.data.matchScore !== undefined ? payload.data.matchScore.toString() : "",
@@ -147,23 +148,14 @@ export async function notifyMatchFound(
 ): Promise<boolean> {
     let lang: SupportedLanguage = "es";
     try {
-        const userLangSnap = await admin.database().ref(`users/${userId}/settings/language`).once("value");
-        let val = userLangSnap.val();
-        
-        if (!val) {
-            const userPrefLangSnap = await admin.database().ref(`users/${userId}/settings/preferredLanguage`).once("value");
-            val = userPrefLangSnap.val();
-        }
-        
-        if (!val) {
-            const userSnap = await admin.database().ref(`users/${userId}`).once("value");
+        const userSnap = await admin.database().ref(`users/${userId}`).once("value");
+        if (userSnap.exists()) {
             const userVal = userSnap.val() || {};
             const settings = userVal.settings || {};
-            val = settings.preferredLanguage || settings.language || userVal.preferredLanguage || userVal.language;
-        }
-
-        if (val === "ca" || val === "es" || val === "en") {
-            lang = val;
+            const val = userVal.preferredLanguage || settings.preferredLanguage || userVal.language || settings.language;
+            if (val === "ca" || val === "es" || val === "en") {
+                lang = val;
+            }
         }
     } catch (error) {
         console.error(`Error obteniendo idioma preferido del usuario ${userId}:`, error);
@@ -174,6 +166,8 @@ export async function notifyMatchFound(
         title: getNotificationString("match_found_title", lang),
         body: getNotificationString("match_found_body", lang),
         data: {
+            type: "match",
+            postId: matchPost.id,
             matchPostId: matchPost.id,
             matchTitle: matchPost.title,
             matchScore,

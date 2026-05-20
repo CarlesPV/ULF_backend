@@ -90,7 +90,11 @@ describe("Match Notification System", () => {
         jest.spyOn(Date, "now").mockReturnValue(1710000000000);
         const env = setupCallableTestEnv({
             onceByPath: {
-                "users/user-1/settings/language": "ca",
+                "users/user-1": {
+                    settings: {
+                        language: "ca"
+                    }
+                },
                 "users/user-1/fcm_tokens": {
                     "token-ca": true
                 }
@@ -113,6 +117,8 @@ describe("Match Notification System", () => {
                 body: "Es va trobar un objecte que podria coincidir amb la teva recerca."
             },
             data: expect.objectContaining({
+                type: "match",
+                postId: "post-99",
                 matchPostId: "post-99",
                 matchTitle: "Motxilla blava",
                 matchScore: "2.5",
@@ -125,11 +131,19 @@ describe("Match Notification System", () => {
     test("notifyMultipleUsersOfMatch returns success and failure counts", async () => {
         const env = setupCallableTestEnv({
             onceByPath: {
-                "users/user-ok/settings/language": "es",
+                "users/user-ok": {
+                    settings: {
+                        language: "es"
+                    }
+                },
                 "users/user-ok/fcm_tokens": {
                     "token-ok": true
                 },
-                "users/user-fail/settings/language": "es",
+                "users/user-fail": {
+                    settings: {
+                        language: "es"
+                    }
+                },
                 "users/user-fail/fcm_tokens": null
             }
         });
@@ -149,7 +163,11 @@ describe("Match Notification System", () => {
         jest.spyOn(console, "error").mockImplementation(() => {});
         const env = setupCallableTestEnv({
             onceByPath: {
-                "users/user-fallback/settings/language": "invalid-lang", // unsupported language
+                "users/user-fallback": {
+                    settings: {
+                        language: "invalid-lang" // unsupported language
+                    }
+                },
                 "users/user-fallback/fcm_tokens": {
                     "token-fallback": true
                 }
@@ -170,6 +188,46 @@ describe("Match Notification System", () => {
                 title: "¡Coincidencia encontrada!", // Spanish fallback title
                 body: "Se encontró un objeto que podría coincidir con tu búsqueda."
             }
+        }));
+    });
+
+    test("notifyMatchFound uses top-level preferredLanguage if settings language is missing", async () => {
+        jest.spyOn(Date, "now").mockReturnValue(1710000000000);
+        const env = setupCallableTestEnv({
+            onceByPath: {
+                "users/user-top-lang": {
+                    preferredLanguage: "ca"
+                },
+                "users/user-top-lang/fcm_tokens": {
+                    "token-top-lang": true
+                }
+            }
+        });
+        const { notifyMatchFound } = require("../../lib/shared/notifications");
+
+        const result = await notifyMatchFound("user-top-lang", {
+            id: "post-99",
+            title: "Motxilla blava",
+            description: "A prop de la biblioteca",
+            photo_url: "https://example.com/photo.jpg"
+        }, 2.5);
+
+        expect(result).toBe(true);
+        expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
+            token: "token-top-lang",
+            notification: {
+                title: "¡Coincidència trobada!",
+                body: "Es va trobar un objecte que podria coincidir amb la teva recerca."
+            },
+            data: expect.objectContaining({
+                type: "match",
+                postId: "post-99",
+                matchPostId: "post-99",
+                matchTitle: "Motxilla blava",
+                matchScore: "2.5",
+                matchPhotoUrl: "https://example.com/photo.jpg",
+                timestamp: "1710000000000"
+            })
         }));
     });
 });

@@ -27,9 +27,11 @@ describe("onMessageCreated trigger", () => {
                     "sender-1": true,
                     "receiver-1": true
                 },
-                "users/receiver-1/settings": {
-                    push_notifications: false,
-                    language: "es"
+                "users/receiver-1": {
+                    settings: {
+                        push_notifications: false,
+                        language: "es"
+                    }
                 }
             }
         });
@@ -82,9 +84,11 @@ describe("onMessageCreated trigger", () => {
                     "sender-1": true,
                     "receiver-1": true
                 },
-                "users/receiver-1/settings": {
-                    push_notifications: true,
-                    language: "ca"
+                "users/receiver-1": {
+                    settings: {
+                        push_notifications: true,
+                        language: "ca"
+                    }
                 },
                 "users/receiver-1/fcm_tokens": {
                     "receiver-token": true
@@ -107,6 +111,7 @@ describe("onMessageCreated trigger", () => {
                 body: "Missatge nou"
             },
             data: {
+                type: "chat",
                 chatId: "chat-1",
                 messageId: "message-99"
             }
@@ -123,9 +128,11 @@ describe("onMessageCreated trigger", () => {
                     "sender-1": true,
                     "receiver-1": true
                 },
-                "users/receiver-1/settings": {
-                    push_notifications: true,
-                    language: "es"
+                "users/receiver-1": {
+                    settings: {
+                        push_notifications: true,
+                        language: "es"
+                    }
                 },
                 "users/receiver-1/fcm_tokens": {
                     "bad-token": true
@@ -188,9 +195,11 @@ describe("onMessageCreated trigger", () => {
                     "sender-1": true,
                     "receiver-1": true
                 },
-                "users/receiver-1/settings": {
-                    push_notifications: true,
-                    language: "ca"
+                "users/receiver-1": {
+                    settings: {
+                        push_notifications: true,
+                        language: "ca"
+                    }
                 },
                 "users/receiver-1/fcm_tokens": {
                     "receiver-token": true
@@ -214,10 +223,52 @@ describe("onMessageCreated trigger", () => {
                 body: "📷 Imatge"
             },
             data: {
+                type: "chat",
                 chatId: "chat-1",
                 messageId: "message-99"
             }
         });
+    });
+
+    test("sends push notification with top-level preferredLanguage if settings language is missing", async () => {
+        const env = setupCallableTestEnv({
+            onceByPath: {
+                "chats/chat-1/members": {
+                    "sender-1": true,
+                    "receiver-1": true
+                },
+                "users/receiver-1": {
+                    preferredLanguage: "ca",
+                    settings: {
+                        push_notifications: true
+                    }
+                },
+                "users/receiver-1/fcm_tokens": {
+                    "receiver-token": true
+                }
+            }
+        });
+        const { onMessageCreated } = require("../../lib/chats/onMessageCreated");
+
+        await onMessageCreated(messageEvent({
+            text: "Hola",
+            timestamp: 12345,
+            sender_id: "sender-1"
+        }, "chat-1", "message-99"));
+
+        expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
+        expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
+            token: "receiver-token",
+            notification: {
+                title: "Nou missatge",
+                body: "Hola"
+            },
+            data: {
+                type: "chat",
+                chatId: "chat-1",
+                messageId: "message-99"
+            }
+        }));
     });
 });
 
