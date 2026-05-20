@@ -175,6 +175,7 @@ async function handlePostImage(event: any) {
 
         const timestamp = Date.now();
         const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media&token=${downloadToken}&t=${timestamp}`;
+        const finalPublicUrl = publicUrl;
 
         // Analizar la imagen convertida para detectar sus características visuales y clasificar el objeto
         const imageRequest = {
@@ -213,9 +214,9 @@ async function handlePostImage(event: any) {
         }
 
         // Persistir en la base de datos sincronizando los campos estandarizados del post
-        await admin.database().ref(`posts/${postId}`).update({
-            postImageUrl: publicUrl,
-            imageUrl: publicUrl,
+        await admin.database().ref('posts/' + postId).update({
+            postImageUrl: finalPublicUrl,
+            imageUrl: finalPublicUrl,
             vision_labels: translatedLabels,
             updated_at: admin.database.ServerValue.TIMESTAMP
         });

@@ -47,8 +47,9 @@ describe("markNotificationsRead", () => {
     });
   });
 
-  test("throws not-found when the specified notificationId does not exist", async () => {
-    setupCallableTestEnv({
+  test("ignores silently and does not throw not-found when the specified notificationId does not exist", async () => {
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    const env = setupCallableTestEnv({
       onceByPath: {
         "users/user-1/notifications/notif-123": null
       }
@@ -56,8 +57,43 @@ describe("markNotificationsRead", () => {
 
     const { markNotificationsRead } = require("../../lib/notifications/markNotificationsRead");
 
-    await expect(markNotificationsRead(authenticatedRequest({ notificationId: "notif-123" })))
-      .rejects.toMatchObject({ code: "not-found" });
+    const result = await markNotificationsRead(authenticatedRequest({ notificationId: "notif-123" }));
+
+    expect(result).toEqual({
+      success: true,
+      message: "Notificaciones marcadas como leídas."
+    });
+
+    expect(env.writes).toEqual([]);
+  });
+
+  test("marks valid notification as read and skips non-existing one in the same request", async () => {
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "users/user-1/notifications/notif-A": { id: "notif-A", read: false },
+        "users/user-1/notifications/notif-B": null
+      }
+    });
+
+    const { markNotificationsRead } = require("../../lib/notifications/markNotificationsRead");
+
+    const result = await markNotificationsRead(authenticatedRequest({
+      notificationIds: ["notif-A", "notif-B"]
+    }));
+
+    expect(result).toEqual({
+      success: true,
+      message: "Notificaciones marcadas como leídas."
+    });
+
+    expect(env.writes).toContainEqual({
+      op: "update",
+      path: "users/user-1/notifications",
+      value: {
+        "notif-A/read": true
+      }
+    });
   });
 
   test("marks multiple notifications as read if notificationIds is provided", async () => {

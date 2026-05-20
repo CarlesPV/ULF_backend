@@ -131,11 +131,32 @@ function setupCallableTestEnv(options = {}) {
           throw onceRejectsByPath[pathName];
         }
 
-        if (!onceByPath.has(pathName)) {
-          return snapshot(null, false);
+        if (onceByPath.has(pathName)) {
+          return asSnapshot(onceByPath.get(pathName));
         }
 
-        return asSnapshot(onceByPath.get(pathName));
+        // Buscar una coincidencia jerárquica
+        for (const [key, val] of onceByPath.entries()) {
+          if (pathName.startsWith(key + "/")) {
+            const relativePath = pathName.slice(key.length + 1);
+            const parts = relativePath.split("/");
+            let current = val;
+            let found = true;
+            for (const part of parts) {
+              if (current && typeof current === "object" && part in current) {
+                current = current[part];
+              } else {
+                found = false;
+                break;
+              }
+            }
+            if (found) {
+              return asSnapshot(current);
+            }
+          }
+        }
+
+        return snapshot(null, false);
       }),
       push: jest.fn(() => {
         const newKey = pushKeys[pushCounter] || `mock-key-${pushCounter + 1}`;

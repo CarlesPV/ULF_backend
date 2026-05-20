@@ -29,7 +29,7 @@ describe("onMessageCreated trigger", () => {
                 },
                 "users/receiver-1": {
                     settings: {
-                        push_notifications: false,
+                        pushNotificationsEnabled: false,
                         language: "es"
                     }
                 }
@@ -52,6 +52,24 @@ describe("onMessageCreated trigger", () => {
                     "chats/chat-1/last_message_time": 12345,
                     "user_chats/sender-1/chat-1": 12345,
                     "user_chats/receiver-1/chat-1": 12345
+                }
+            },
+            {
+                op: "set",
+                path: "users/receiver-1/notifications/mock-key-1",
+                value: {
+                    id: "mock-key-1",
+                    type: "new_message",
+                    title: "Nuevo mensaje",
+                    body: "Hola, siguen disponibles las llaves?",
+                    read: false,
+                    timestamp: 12345,
+                    data: {
+                        type: "chat",
+                        chatId: "chat-1",
+                        messageId: "message-1",
+                        timestamp: 12345
+                    }
                 }
             }
         ]);
@@ -86,7 +104,7 @@ describe("onMessageCreated trigger", () => {
                 },
                 "users/receiver-1": {
                     settings: {
-                        push_notifications: true,
+                        pushNotificationsEnabled: true,
                         language: "ca"
                     }
                 },
@@ -130,7 +148,7 @@ describe("onMessageCreated trigger", () => {
                 },
                 "users/receiver-1": {
                     settings: {
-                        push_notifications: true,
+                        pushNotificationsEnabled: true,
                         language: "es"
                     }
                 },
@@ -197,7 +215,7 @@ describe("onMessageCreated trigger", () => {
                 },
                 "users/receiver-1": {
                     settings: {
-                        push_notifications: true,
+                        pushNotificationsEnabled: true,
                         language: "ca"
                     }
                 },
@@ -240,7 +258,7 @@ describe("onMessageCreated trigger", () => {
                 "users/receiver-1": {
                     preferredLanguage: "ca",
                     settings: {
-                        push_notifications: true
+                        pushNotificationsEnabled: true
                     }
                 },
                 "users/receiver-1/fcm_tokens": {

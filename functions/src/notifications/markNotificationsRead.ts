@@ -91,14 +91,16 @@ export const markNotificationsRead = functions.https.onCall(async (request) => {
         // Comprobar la propiedad y existencia de cada ID especificado antes de proceder (Zero Trust)
         const updates: { [key: string]: boolean } = {};
         for (const notifId of idsToMark) {
-            const notifSnap = await admin.database().ref(`users/${uid}/notifications/${notifId}`).once("value");
-            if (!notifSnap.exists()) {
-                throw new functions.https.HttpsError(
-                    "not-found",
-                    I18N_STRINGS.errors.item_not_found
-                );
+            try {
+                const notifSnap = await admin.database().ref(`users/${uid}/notifications/${notifId}`).once("value");
+                if (notifSnap.exists()) {
+                    updates[`${notifId}/read`] = true;
+                } else {
+                    console.warn(`Notificación ${notifId} no encontrada para el usuario ${uid}, se omite del lote.`);
+                }
+            } catch (err) {
+                console.error(`Error al comprobar la notificación ${notifId}:`, err);
             }
-            updates[`${notifId}/read`] = true;
         }
 
         // Operación Batch / Actualización atómica de múltiples paths en RTDB

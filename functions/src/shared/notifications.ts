@@ -51,6 +51,15 @@ export async function sendNotificationToUser(
     payload: NotificationPayload
 ): Promise<boolean> {
     try {
+        const settingsSnap = await admin
+            .database()
+            .ref(`users/${userId}/settings/pushNotificationsEnabled`)
+            .once("value");
+        const userSettings = { pushNotificationsEnabled: settingsSnap.val() };
+        if (userSettings.pushNotificationsEnabled === false) {
+            return false;
+        }
+
         const tokensSnapshot = await admin
             .database()
             .ref(`users/${userId}/fcm_tokens`)

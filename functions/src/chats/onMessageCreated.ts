@@ -90,11 +90,6 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                         const userVal = userSnap.val() || {};
                         const settings = userVal.settings || {};
 
-                        const pushEnabled = settings.push_notifications === undefined ? true : settings.push_notifications;
-                        if (pushEnabled !== true) {
-                            return null;
-                        }
-
                         // Internacionalización (i18n): Obtener la cadena en el idioma correspondiente (es, ca, en)
                         let userLang: SupportedLanguage = "es";
                         const rawLang = userVal.preferredLanguage || settings.preferredLanguage || userVal.language || settings.language;
@@ -123,6 +118,17 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                             console.error(`Error al guardar la notificación in-app para usuario ${memberId}:`, err);
                             return null;
                         });
+
+                        // Leer la preferencia de notificaciones push
+                        const settingsSnap = await admin.database()
+                            .ref(`users/${memberId}/settings/pushNotificationsEnabled`)
+                            .once("value");
+                        const userSettings = { pushNotificationsEnabled: settingsSnap.val() };
+
+                        if (userSettings.pushNotificationsEnabled === false) {
+                            await saveInAppPromise;
+                            return null;
+                        }
 
                         // Consultar los tokens de Firebase Cloud Messaging (FCM) registrados por el usuario
                         const fcmTokensSnap = await admin.database()
