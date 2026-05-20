@@ -37,13 +37,13 @@ describe("markNotificationsRead", () => {
 
     expect(result).toEqual({
       success: true,
-      message: "Notificación marcada como leída."
+      message: "Notificaciones marcadas como leídas."
     });
 
     expect(env.writes).toContainEqual({
       op: "update",
-      path: "users/user-1/notifications/notif-123",
-      value: { read: true }
+      path: "users/user-1/notifications",
+      value: { "notif-123/read": true }
     });
   });
 
@@ -58,6 +58,75 @@ describe("markNotificationsRead", () => {
 
     await expect(markNotificationsRead(authenticatedRequest({ notificationId: "notif-123" })))
       .rejects.toMatchObject({ code: "not-found" });
+  });
+
+  test("marks multiple notifications as read if notificationIds is provided", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "users/user-1/notifications/notif-A": { id: "notif-A", read: false },
+        "users/user-1/notifications/notif-B": { id: "notif-B", read: false }
+      }
+    });
+
+    const { markNotificationsRead } = require("../../lib/notifications/markNotificationsRead");
+
+    const result = await markNotificationsRead(authenticatedRequest({
+      notificationIds: ["notif-A", "notif-B"]
+    }));
+
+    expect(result).toEqual({
+      success: true,
+      message: "Notificaciones marcadas como leídas."
+    });
+
+    expect(env.writes).toContainEqual({
+      op: "update",
+      path: "users/user-1/notifications",
+      value: {
+        "notif-A/read": true,
+        "notif-B/read": true
+      }
+    });
+  });
+
+  test("marks all notifications as read if all: true is provided", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "users/user-1/notifications": {
+          "notif-X": { id: "notif-X", read: false },
+          "notif-Y": { id: "notif-Y", read: false }
+        }
+      }
+    });
+
+    const { markNotificationsRead } = require("../../lib/notifications/markNotificationsRead");
+
+    const result = await markNotificationsRead(authenticatedRequest({ all: true }));
+
+    expect(result).toEqual({
+      success: true,
+      message: "Todas las notificaciones marcadas como leídas."
+    });
+
+    expect(env.writes).toContainEqual({
+      op: "update",
+      path: "users/user-1/notifications",
+      value: {
+        "notif-X/read": true,
+        "notif-Y/read": true
+      }
+    });
+  });
+
+  test("rejects invalid or path traversal notificationId formats for Zero Trust security", async () => {
+    setupCallableTestEnv();
+    const { markNotificationsRead } = require("../../lib/notifications/markNotificationsRead");
+
+    await expect(markNotificationsRead(authenticatedRequest({ notificationId: "../malicious" })))
+      .rejects.toMatchObject({ code: "invalid-argument" });
+
+    await expect(markNotificationsRead(authenticatedRequest({ notificationIds: ["notif-1", "bad/path"] })))
+      .rejects.toMatchObject({ code: "invalid-argument" });
   });
 
   test("marks all notifications as read if notificationId is not provided", async () => {

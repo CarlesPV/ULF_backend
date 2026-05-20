@@ -83,11 +83,12 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                 .filter(memberId => memberId !== senderId)
                 .map(async (memberId) => {
                     try {
-                        // Obtener los ajustes de notificación e idioma de preferencia del destinatario
-                        const userSettingsSnap = await admin.database()
-                            .ref(`users/${memberId}/settings`)
+                        // Obtener la información completa del usuario destinatario para settings e idioma
+                        const userSnap = await admin.database()
+                            .ref(`users/${memberId}`)
                             .once("value");
-                        const settings = userSettingsSnap.val() || {};
+                        const userVal = userSnap.val() || {};
+                        const settings = userVal.settings || {};
 
                         const pushEnabled = settings.push_notifications === undefined ? true : settings.push_notifications;
                         if (pushEnabled !== true) {
@@ -96,14 +97,7 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
 
                         // Internacionalización (i18n): Obtener la cadena en el idioma correspondiente (es, ca, en)
                         let userLang: SupportedLanguage = "es";
-                        let rawLang = settings.preferredLanguage || settings.language;
-                        if (!rawLang) {
-                            const userSnap = await admin.database()
-                                .ref(`users/${memberId}`)
-                                .once("value");
-                            const userVal = userSnap.val() || {};
-                            rawLang = userVal.preferredLanguage || userVal.language;
-                        }
+                        const rawLang = userVal.preferredLanguage || settings.preferredLanguage || userVal.language || settings.language;
                         if (rawLang === "es" || rawLang === "en" || rawLang === "ca") {
                             userLang = rawLang;
                         }
@@ -117,6 +111,7 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                             title: notificationTitle,
                             body: notificationBody,
                             data: {
+                                type: "chat",
                                 chatId: chatId,
                                 messageId: event.params.messageId,
                                 timestamp: message.timestamp || Date.now()
@@ -150,6 +145,7 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                                     body: inAppPayload.body
                                 },
                                 data: {
+                                    type: "chat",
                                     chatId: chatId,
                                     messageId: event.params.messageId
                                 }
