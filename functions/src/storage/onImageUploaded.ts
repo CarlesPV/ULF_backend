@@ -8,13 +8,6 @@ import * as os from "os";
 import * as fs from "fs";
 import * as crypto from "crypto";
 
-function getFirstDownloadToken(metadata: { [key: string]: any } | undefined): string | null {
-    const tokenValue = metadata?.firebaseStorageDownloadTokens;
-    if (typeof tokenValue !== "string") return null;
-
-    const firstToken = tokenValue.split(",")[0]?.trim();
-    return firstToken || null;
-}
 
 /**
  * Trigger de Firebase Storage v2 que se activa automáticamente al completarse la subida de un archivo (onObjectFinalized).
@@ -31,13 +24,6 @@ export const onImageUploaded = onObjectFinalized(async (event) => {
     const filePath = event.data.name; 
     const metadata = (event.data.metadata || {}) as any;
 
-    // Validar si el objeto ya es .webp o está optimizado para detener la ejecución inmediatamente sin borrar el archivo
-    const isWebp = filePath.toLowerCase().endsWith(".webp");
-    const isOptimized = metadata.optimized === "true" || metadata.customMetadata?.optimized === "true";
-    if (isWebp || isOptimized) {
-        return null;
-    }
-
     // Evitar bucles infinitos si la imagen ya fue procesada por el backend
     if (metadata.processed === "true") {
         return null;
@@ -46,6 +32,13 @@ export const onImageUploaded = onObjectFinalized(async (event) => {
     // Filtrar imágenes de publicaciones (procesar nuevas subidas y actualizaciones)
     if (filePath.startsWith("posts/")) {
         return handlePostImage(event);
+    }
+
+    // Validar si el objeto ya es .webp o está optimizado para detener la ejecución inmediatamente sin borrar el archivo
+    const isWebp = filePath.toLowerCase().endsWith(".webp");
+    const isOptimized = metadata.optimized === "true" || metadata.customMetadata?.optimized === "true";
+    if (isWebp || isOptimized) {
+        return null;
     }
 
     // Filtrar fotos de perfil en formato original (soporta nombres dinámicos con timestamps y webp)
@@ -151,50 +144,20 @@ async function handleProfileImage(event: any) {
 async function handlePostImage(event: any) {
     const filePath = event.data.name;
     const bucketName = event.data.bucket;
-    const metadata = event.data.metadata || {};
     const pathParts = filePath.split("/");
 
     if (pathParts.length < 3) return null;
     const postId = pathParts[1];
-    const fileName = pathParts[pathParts.length - 1];
 
     const bucket = admin.storage().bucket(bucketName);
     const tempFilePath = path.join(os.tmpdir(), `raw_${postId}_${Date.now()}`);
-    const optimizedFilePath = path.join(os.tmpdir(), `opt_${postId}_${Date.now()}.webp`);
 
     try {
         await bucket.file(filePath).download({ destination: tempFilePath });
 
-        await sharp(tempFilePath)
-            .resize(1080, 1080, { fit: "inside", withoutEnlargement: true })
-            .toFormat("webp")
-            .toFile(optimizedFilePath);
-
-        // Evitar nombres redundantes con doble extensión .webp.webp
-        const baseName = fileName.toLowerCase().endsWith(".webp")
-            ? fileName.substring(0, fileName.length - 5)
-            : fileName;
-        const destination = `posts/${postId}/${baseName}.webp`;
-
-        const downloadToken = getFirstDownloadToken(metadata) || crypto.randomUUID();
-        await bucket.upload(optimizedFilePath, {
-            destination,
-            metadata: {
-                contentType: "image/webp",
-                cacheControl: "public, max-age=3600, s-maxage=3600",
-                metadata: {
-                    processed: "true",
-                    firebaseStorageDownloadTokens: downloadToken
-                }
-            }
-        });
-
-        const timestamp = Date.now();
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media&token=${downloadToken}&t=${timestamp}`;
-
-        // Analizar la imagen convertida para detectar sus características visuales y clasificar el objeto
+        // Analizar la imagen para detectar sus características visuales
         const imageRequest = {
-            image: { content: fs.readFileSync(optimizedFilePath) }
+            image: { content: fs.readFileSync(tempFilePath) }
         };
 
         const visionResponse = await visionClient.labelDetection(imageRequest);
@@ -210,45 +173,18 @@ async function handlePostImage(event: any) {
             translatedLabels = await translateLabels(translationText, DEFAULT_LANGUAGE);
         }
 
-        // Limpieza de imágenes previas (Evitar basura en Storage)
-        try {
-            const postSnapshot = await admin.database().ref(`posts/${postId}`).once("value");
-            const oldImageUrl = postSnapshot.val()?.imageUrl;
-            if (oldImageUrl && typeof oldImageUrl === "string") {
-                const matches = oldImageUrl.match(/\/o\/([^?#]+)/);
-                if (matches && matches[1]) {
-                    const oldPathDecoded = decodeURIComponent(matches[1]);
-                    // Evitar eliminar la imagen original que se está procesando actualmente en este bloque
-                    if (oldPathDecoded !== destination && oldPathDecoded !== filePath) {
-                        await bucket.file(oldPathDecoded).delete();
-                        console.log(`Archivo antiguo de Storage eliminado con éxito: ${oldPathDecoded}`);
-                    }
-                }
-            }
-        } catch (storageError) {
-            console.error("Error al intentar limpiar la imagen antigua de Storage:", storageError);
-        }
-
-        // Persistir en la base de datos sincronizando los campos estandarizados del post
-        await admin.database().ref(`posts/${postId}`).update({
-            postImageUrl: publicUrl,
-            imageUrl: publicUrl,
-            photo_path: destination,
-            vision_labels: translatedLabels,
-            updated_at: admin.database.ServerValue.TIMESTAMP
+        // Hacer un update parcial en RTDB
+        await admin.database().ref("posts/" + postId).update({
+            vision_labels: translatedLabels
         });
 
-        // Evitar borrar el archivo si es el mismo que subimos ya optimizado
-        if (filePath !== destination) {
-            await bucket.file(filePath).delete();
-        }
-        console.log(`Imagen de post optimizada y analizada para ${postId}: ${publicUrl}`);
-
+        console.log(`Etiquetas de Vision extraídas y actualizadas para el post ${postId}`);
     } catch (error) {
         console.error(`Error procesando imagen de post (${filePath}):`, error);
     } finally {
-        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-        if (fs.existsSync(optimizedFilePath)) fs.unlinkSync(optimizedFilePath);
+        if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+        }
     }
     return null;
 }
