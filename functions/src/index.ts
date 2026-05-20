@@ -50,4 +50,6 @@ export { markNotificationsRead } from "./notifications/markNotificationsRead";
 export { onMessageCreated } from "./chats/onMessageCreated";
 export { getOrCreateChat } from "./chats/getOrCreateChat";
 export { onImageUploaded } from "./storage/onImageUploaded";
+export { onProfileImageUploaded } from "./storage/onProfileImageUploaded";
 export { onUserProfileUpdated } from "./users/onUserProfileUpdated";
+
