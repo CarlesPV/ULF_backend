@@ -111,4 +111,43 @@ describe("integration: Realtime Database rules", () => {
       { timestamp: Date.now() }
     ));
   });
+
+  test("users can write their own settings and preferredLanguage", async () => {
+    const userUid = "user-settings-1";
+    await createVerifiedUser({
+      uid: userUid,
+      email: "settings@uab.cat"
+    });
+    await adminDb().ref(`users/${userUid}`).set({
+      id: userUid,
+      center_id: "uab",
+      role: "student",
+      email: "settings@uab.cat",
+      name: "Test User",
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      is_deleted: false
+    });
+
+    const client = await signInClient(createClientApp(), "settings@uab.cat");
+
+    await expect(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/preferredLanguage`),
+      "es"
+    )).resolves.toBeUndefined();
+
+    await expect(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/settings`),
+      {
+        language: "en",
+        push_notifications: true,
+        dark_mode: false
+      }
+    )).resolves.toBeUndefined();
+
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, "users/other-user/preferredLanguage"),
+      "es"
+    ));
+  });
 });

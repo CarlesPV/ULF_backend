@@ -12,9 +12,9 @@
         },
         "users": {
             "$uid": {
-                ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true",
+                ".write": "auth != null && auth.uid === $uid",
                 ".read": "auth != null && auth.uid === $uid",
-                ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $uid && newData.child('updated_at').val() === now",
+                ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $uid && (newData.child('updated_at').val() === now || data.child('updated_at').val() === newData.child('updated_at').val())",
                 "role": {
                     ".validate": "(!data.exists() && newData.val() === 'student') || (data.exists() && newData.val() === data.val())"
                 },
@@ -22,21 +22,27 @@
                     ".validate": "root.child('centers').child(newData.val()).exists()"
                 },
                 "settings": {
+                    ".write": "auth != null && auth.uid === $uid",
                     "language": {
                         ".validate": "newData.isString() && newData.val().matches(/^(es|en|ca)$/)"
                     },
                     "push_notifications": {
-                        ".read": "$uid === auth.uid",
-                        ".write": "$uid === auth.uid",
+                        ".read": "auth != null && auth.uid === $uid",
+                        ".write": "auth != null && auth.uid === $uid",
                         ".validate": "newData.isBoolean()"
                     },
                     "dark_mode": {
                         ".validate": "newData.isBoolean()"
                     }
                 },
+                "preferredLanguage": {
+                    ".write": "auth != null && auth.uid === $uid",
+                    ".validate": "newData.isString() && newData.val().matches(/^(es|en|ca)$/)"
+                },
                 "notifications": {
-                    ".read": "$uid === auth.uid",
-                    ".write": "$uid === auth.uid"
+                    ".read": "auth != null && auth.uid === $uid",
+                    ".write": "auth != null && auth.uid === $uid",
+                    ".indexOn": ["read"]
                 }
             }
         },
