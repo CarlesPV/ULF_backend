@@ -112,8 +112,8 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                             body: notificationBody,
                             data: {
                                 type: "chat",
-                                chatId: chatId,
-                                messageId: event.params.messageId,
+                                chatId: String(chatId),
+                                messageId: String(event.params.messageId),
                                 timestamp: message.timestamp || Date.now()
                             }
                         };
@@ -146,8 +146,8 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                                 },
                                 data: {
                                     type: "chat",
-                                    chatId: chatId,
-                                    messageId: event.params.messageId
+                                    chatId: String(chatId),
+                                    messageId: String(event.params.messageId)
                                 }
                             }).catch((error) => {
                                 console.warn(`Error enviando notificación al token ${token}:`, error);
