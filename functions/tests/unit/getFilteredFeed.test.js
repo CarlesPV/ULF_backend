@@ -49,7 +49,7 @@ describe("getFilteredFeed search", () => {
     test("should return an empty feed when active index has no entries", async () => {
         setupCallableTestEnv({
             onceByPath: {
-                "active_posts/uab": null
+                "active_posts/uab/lost": null
             }
         });
         const { getFilteredFeed } = require("../../lib/feed/getFilteredFeed");
@@ -65,7 +65,7 @@ describe("getFilteredFeed search", () => {
     test("should filter by category, sort by date, and limit results", async () => {
         setupCallableTestEnv({
             onceByPath: {
-                "active_posts/uab": { "post-1": 1000, "post-2": 1100, "post-3": 1200 },
+                "active_posts/uab/lost": { "post-1": 1000, "post-2": 1100, "post-3": 1200 },
                 "posts/post-1": { ...posts["post-1"], category: "bags", created_at: 1000 },
                 "posts/post-2": { ...posts["post-2"], category: "accessories", created_at: 1100 },
                 "posts/post-3": {
@@ -94,7 +94,7 @@ describe("getFilteredFeed search", () => {
         const env = setupCallableTestEnv({
             translateResult: "library",
             onceByPath: {
-                "active_posts/uab": { "post-1": 1000, "post-2": 1100 },
+                "active_posts/uab/lost": { "post-1": 1000, "post-2": 1100 },
                 "posts/post-1": posts["post-1"],
                 "posts/post-2": posts["post-2"]
             }
@@ -115,7 +115,7 @@ describe("getFilteredFeed search", () => {
         const env = setupCallableTestEnv({
             translateResult: "biblioteca",
             onceByPath: {
-                "active_posts/uab": { "post-1": 1000 },
+                "active_posts/uab/lost": { "post-1": 1000 },
                 "posts/post-1": { ...posts["post-1"], translated_description: undefined }
             }
         });
@@ -135,7 +135,7 @@ describe("getFilteredFeed search", () => {
         const env = setupCallableTestEnv({
             translateResult: "glasses",
             onceByPath: {
-                "active_posts/uab": { "post-1": 1000, "post-2": 1100 },
+                "active_posts/uab/lost": { "post-1": 1000, "post-2": 1100 },
                 "posts/post-1": posts["post-1"],
                 "posts/post-2": posts["post-2"]
             }
@@ -156,7 +156,7 @@ describe("getFilteredFeed search", () => {
         const env = setupCallableTestEnv({
             translateResult: "gafas",
             onceByPath: {
-                "active_posts/uab": { "post-1": 1000, "post-2": 1100 },
+                "active_posts/uab/lost": { "post-1": 1000, "post-2": 1100 },
                 "posts/post-1": posts["post-1"],
                 "posts/post-2": posts["post-2"]
             }
@@ -178,7 +178,7 @@ describe("getFilteredFeed search", () => {
         setupCallableTestEnv({
             translateRejects: new Error("translate failed"),
             onceByPath: {
-                "active_posts/uab": { "post-1": 1000 },
+                "active_posts/uab/lost": { "post-1": 1000 },
                 "posts/post-1": { ...posts["post-1"], translated_description: undefined }
             }
         });
@@ -196,7 +196,7 @@ describe("getFilteredFeed search", () => {
     test("should sort by distance and exclude posts without valid coordinates", async () => {
         setupCallableTestEnv({
             onceByPath: {
-                "active_posts/uab": { "near": 1000, "far": 1100, "no-coords": 1200 },
+                "active_posts/uab/lost": { "near": 1000, "far": 1100, "no-coords": 1200 },
                 "posts/near": {
                     id: "near",
                     center_id: "uab",

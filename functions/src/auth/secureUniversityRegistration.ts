@@ -1,6 +1,7 @@
 import * as functions from "firebase-functions";
 import { admin, db } from "../shared/firebase";
 import { I18N_STRINGS } from "../shared/i18n";
+import { RegistrationPayload, SupportedLanguage } from "../shared/types";
 
 /**
  * Registro seguro de usuarios en centros universitarios autorizados.
@@ -28,10 +29,23 @@ import { I18N_STRINGS } from "../shared/i18n";
  *   - 'internal': Si ocurre algún error inesperado en el servidor durante el proceso.
  */
 export const secureUniversityRegistration = functions.https.onCall(async (request) => {
-    const { email, password, name } = request.data;
+    const data = request.data as RegistrationPayload;
+    const { email, password, name, preferredLanguage, language } = data;
 
     if (!email || !password || !name) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
+    }
+
+    // Validar de forma estricta el idioma preferido
+    const inputLang = preferredLanguage || language;
+    let finalLanguage: SupportedLanguage = "es";
+
+    if (inputLang) {
+        if (inputLang === "es" || inputLang === "en" || inputLang === "ca") {
+            finalLanguage = inputLang;
+        } else {
+            throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_language);
+        }
     }
 
     // Validar el formato del dominio del correo electrónico institucional
@@ -77,7 +91,8 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
             name: name,
             photo_path: "",
             settings: {
-                language: request.data.language || "es", // Idioma predeterminado en castellano si no se suministra
+                language: finalLanguage,
+                pushNotificationsEnabled: true,
                 push_notifications: true,
                 dark_mode: false
             },

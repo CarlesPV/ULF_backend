@@ -11,15 +11,42 @@
             }
         },
         "users": {
-            "$user_id": {
-                ".write": "auth != null && auth.uid === $user_id && auth.token.email_verified === true",
-                ".read": "auth != null && auth.uid === $user_id",
-                ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $user_id && newData.child('updated_at').val() === now",
+            "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".read": "auth != null && auth.uid === $uid",
+                ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $uid && (newData.child('updated_at').val() === now || data.child('updated_at').val() === newData.child('updated_at').val()) && (!newData.child('photoUrl').exists() || newData.child('photoUrl').isString())",
                 "role": {
                     ".validate": "(!data.exists() && newData.val() === 'student') || (data.exists() && newData.val() === data.val())"
                 },
                 "center_id": {
                     ".validate": "root.child('centers').child(newData.val()).exists()"
+                },
+                "settings": {
+                    ".read": "auth != null && auth.uid === $uid",
+                    ".write": "auth != null && auth.uid === $uid",
+                    "language": {
+                        ".validate": "newData.isString() && newData.val().matches(/^(es|en|ca)$/)"
+                    },
+                    "pushNotificationsEnabled": {
+                        ".validate": "newData.isBoolean()"
+                    },
+                    "push_notifications": {
+                        ".read": "auth != null && auth.uid === $uid",
+                        ".write": "auth != null && auth.uid === $uid",
+                        ".validate": "newData.isBoolean()"
+                    },
+                    "dark_mode": {
+                        ".validate": "newData.isBoolean()"
+                    }
+                },
+                "preferredLanguage": {
+                    ".write": "auth != null && auth.uid === $uid",
+                    ".validate": "newData.isString() && newData.val().matches(/^(es|en|ca)$/)"
+                },
+                "notifications": {
+                    ".read": "auth != null && auth.uid === $uid",
+                    ".write": "auth != null && auth.uid === $uid",
+                    ".indexOn": ["read"]
                 }
             }
         },
@@ -57,7 +84,13 @@
                 ".read": "auth != null",
                 ".indexOn": [
                     ".value"
-                ]
+                ],
+                "$type": {
+                    ".read": "auth != null",
+                    ".indexOn": [
+                        ".value"
+                    ]
+                }
             }
         },
         "post_views": {

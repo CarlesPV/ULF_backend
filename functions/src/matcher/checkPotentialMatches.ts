@@ -33,7 +33,7 @@ import { I18N_STRINGS } from "../shared/i18n";
  *   - 'invalid-argument': Si faltan los campos estructurales mandatorios.
  */
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
-    const { center_id, category, type, color, description } = request.data;
+    const { center_id, category, type, color, description, title } = request.data;
 
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
@@ -45,8 +45,8 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     // Buscar objetos en la categoría contraria para emparejamiento
     const targetType = (type === "found") ? "lost" : "found";
 
-    // Consultar identificadores de posts activos usando el índice secundario del centro
-    const activeRefs = await admin.database().ref(`active_posts/${center_id}`).once("value");
+    // Consultar identificadores de posts activos usando el índice secundario del centro filtrado por tipo objetivo
+    const activeRefs = await admin.database().ref(`active_posts/${center_id}/${targetType}`).once("value");
     if (!activeRefs.exists()) return { matches: [] };
 
     const activeIds = Object.keys(activeRefs.val());
@@ -56,7 +56,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const postSnapshots = await Promise.all(postPromises);
 
     // Preparar términos lingüísticos y traducción automática al idioma unificado del backend
-    let searchTerms = `${color || ""} ${description || ""}`.trim();
+    let searchTerms = `${title || ""} ${color || ""} ${description || ""}`.trim();
     let searchWords: string[] = [];
     
     if (searchTerms !== "") {
@@ -66,7 +66,8 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         } catch (error) {
             console.error("Error en traducción:", error);
         }
-        searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
+        const stopWords = new Set(["the", "and", "for", "but", "not", "con", "del", "una", "los", "las", "por", "que", "els", "les", "per", "sus", "com", "out", "you", "him", "her", "its", "our", "are", "was", "has", "had", "bin"]);
+        searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2 && !stopWords.has(w));
     }
 
     // Filtrado semántico y cálculo de puntuación (Scoring)
@@ -78,7 +79,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
 
         if (post.type === targetType && post.category === category && !post.is_deleted) {
             let score = 1.0;
-            const targetDesc = post.translated_description || post.description?.toLowerCase() || "";
+            const targetDesc = `${post.title || ""} ${post.translated_description || post.description?.toLowerCase() || ""}`.toLowerCase();
 
             if (searchWords.length > 0 && targetDesc) {
                 let matchCount = 0;
@@ -95,11 +96,20 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
                 description: post.description,
                 score: score,
                 photo_path: post.photo_path,
-                postImageUrl: post.postImageUrl || post.imageUrl || post.photo_url || ""
+                postImageUrl: post.postImageUrl || post.imageUrl || post.photo_url || "",
+                created_at: post.created_at || post.date || 0
             });
         }
     }
 
-    // Retornar las 5 coincidencias de mayor relevancia
-    return { matches: potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5) };
+    // Retornar las 5 coincidencias de mayor relevancia (más recientes en caso de empate)
+    return { 
+        matches: potentialMatches
+            .sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return (b.created_at || 0) - (a.created_at || 0);
+            })
+            .slice(0, 5)
+            .map(({ created_at, ...rest }) => rest)
+    };
 });

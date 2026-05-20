@@ -41,7 +41,7 @@ describe("checkPotentialMatches", () => {
   test("reads active post ids and returns the highest scoring candidates", async () => {
     const env = setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "lost-1": 100,
           "found-1": 101,
           "deleted-1": 102
@@ -98,7 +98,7 @@ describe("checkPotentialMatches", () => {
         }
       ]
     });
-    expect(env.refMock).toHaveBeenCalledWith("active_posts/uab");
+    expect(env.refMock).toHaveBeenCalledWith("active_posts/uab/lost");
     expect(env.refMock).toHaveBeenCalledWith("posts/lost-1");
     expect(env.translateText).toHaveBeenCalledWith("azul cinta", "es");
   });
@@ -106,7 +106,7 @@ describe("checkPotentialMatches", () => {
   test("returns an empty list when the active index has no entries", async () => {
     setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": null
+        "active_posts/uab/lost": null
       },
       translateResult: "blue"
     });
@@ -124,7 +124,7 @@ describe("checkPotentialMatches", () => {
   test("ignores active index entries whose post snapshot no longer exists", async () => {
     setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "missing-1": 100
         },
         "posts/missing-1": null
@@ -145,7 +145,7 @@ describe("checkPotentialMatches", () => {
   test("returns a base score when only type and category match", async () => {
     const env = setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "lost-1": 100,
           "lost-wallet": 101,
           "found-1": 102
@@ -206,7 +206,7 @@ describe("checkPotentialMatches", () => {
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": {
+        "active_posts/uab/lost": {
           "lost-1": 100
         },
         "posts/lost-1": {
@@ -265,7 +265,7 @@ describe("checkPotentialMatches", () => {
 
     setupCallableTestEnv({
       onceByPath: {
-        "active_posts/uab": activePosts,
+        "active_posts/uab/lost": activePosts,
         ...posts
       },
       translateResult: "alpha beta gamma"
@@ -288,5 +288,70 @@ describe("checkPotentialMatches", () => {
       photo_path: "posts/lost-6.jpg",
       postImageUrl: ""
     });
+  });
+
+  test("includes title in search terms and awards score bonus for matching words in the target post title", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-special": 100,
+          "lost-normal": 101
+        },
+        "posts/lost-special": {
+          id: "lost-special",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          title: "Special keychain",
+          translated_description: "some other details",
+          photo_path: "posts/lost-special.jpg"
+        },
+        "posts/lost-normal": {
+          id: "lost-normal",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          title: "Ordinary keys",
+          translated_description: "some other details",
+          photo_path: "posts/lost-normal.jpg"
+        }
+      },
+      translateResult: "special key"
+    });
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      title: "especial",
+      color: "azul",
+      description: "llavero"
+    }));
+
+    // Expect translation to be called with: "especial azul llavero"
+    expect(env.translateText).toHaveBeenCalledWith("especial azul llavero", "es");
+
+    // "special key" splits to ["special", "key"]
+    // "lost-special" has targetDesc = "special keychain some other details". Words "special" and "key" match, so score = 1.0 (base) + 2 * 0.5 = 2.0
+    // "lost-normal" has targetDesc = "ordinary keys some other details". Word "key" matches, so score = 1.0 (base) + 0.5 = 1.5
+    expect(result.matches).toEqual([
+      {
+        id: "lost-special",
+        title: "Special keychain",
+        description: undefined,
+        score: 2,
+        photo_path: "posts/lost-special.jpg",
+        postImageUrl: ""
+      },
+      {
+        id: "lost-normal",
+        title: "Ordinary keys",
+        description: undefined,
+        score: 1.5,
+        photo_path: "posts/lost-normal.jpg",
+        postImageUrl: ""
+      }
+    ]);
   });
 });

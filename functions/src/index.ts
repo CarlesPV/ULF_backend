@@ -46,7 +46,10 @@ export { getFilteredFeed } from "./feed/getFilteredFeed";
 export { checkPotentialMatches } from "./matcher/checkPotentialMatches";
 export { purgeUnverifiedAccounts } from "./maintenance/purgeUnverifiedAccounts";
 export { saveFcmToken } from "./notifications/saveFcmToken";
+export { markNotificationsRead } from "./notifications/markNotificationsRead";
 export { onMessageCreated } from "./chats/onMessageCreated";
 export { getOrCreateChat } from "./chats/getOrCreateChat";
 export { onImageUploaded } from "./storage/onImageUploaded";
+export { onProfileImageUploaded } from "./storage/onProfileImageUploaded";
 export { onUserProfileUpdated } from "./users/onUserProfileUpdated";
+

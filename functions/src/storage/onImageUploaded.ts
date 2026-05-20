@@ -6,6 +6,15 @@ import * as sharp from "sharp";
 import * as path from "path";
 import * as os from "os";
 import * as fs from "fs";
+import * as crypto from "crypto";
+
+function getFirstDownloadToken(metadata: { [key: string]: any } | undefined): string | null {
+    const tokenValue = metadata?.firebaseStorageDownloadTokens;
+    if (typeof tokenValue !== "string") return null;
+
+    const firstToken = tokenValue.split(",")[0]?.trim();
+    return firstToken || null;
+}
 
 /**
  * Trigger de Firebase Storage v2 que se activa automáticamente al completarse la subida de un archivo (onObjectFinalized).
@@ -84,17 +93,21 @@ async function handleProfileImage(event: any) {
             .toFile(optimizedFilePath);
 
         const destination = `users/${userId}/profile_image.webp`;
+        const downloadToken = crypto.randomUUID();
         await bucket.upload(optimizedFilePath, {
             destination,
-            metadata: { 
+            metadata: {
                 contentType: "image/webp",
-                cacheControl: "public, max-age=3600, s-maxage=3600"
+                cacheControl: "public, max-age=3600, s-maxage=3600",
+                metadata: {
+                    firebaseStorageDownloadTokens: downloadToken
+                }
             }
         });
 
         // Crear una URL pública en formato Firebase Storage estándar compatible con el cliente
         const timestamp = Date.now();
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media&t=${timestamp}`;
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media&token=${downloadToken}&t=${timestamp}`;
 
         await admin.database().ref(`users/${userId}`).update({
             photoUrl: publicUrl,
@@ -131,6 +144,7 @@ async function handleProfileImage(event: any) {
 async function handlePostImage(event: any) {
     const filePath = event.data.name;
     const bucketName = event.data.bucket;
+    const metadata = event.data.metadata || {};
     const pathParts = filePath.split("/");
 
     if (pathParts.length < 3) return null;
@@ -155,19 +169,21 @@ async function handlePostImage(event: any) {
             : fileName;
         const destination = `posts/${postId}/${baseName}.webp`;
 
+        const downloadToken = getFirstDownloadToken(metadata) || crypto.randomUUID();
         await bucket.upload(optimizedFilePath, {
             destination,
             metadata: {
                 contentType: "image/webp",
                 cacheControl: "public, max-age=3600, s-maxage=3600",
                 metadata: {
-                    processed: "true"
+                    processed: "true",
+                    firebaseStorageDownloadTokens: downloadToken
                 }
             }
         });
 
         const timestamp = Date.now();
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media&t=${timestamp}`;
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destination)}?alt=media&token=${downloadToken}&t=${timestamp}`;
 
         // Analizar la imagen convertida para detectar sus características visuales y clasificar el objeto
         const imageRequest = {

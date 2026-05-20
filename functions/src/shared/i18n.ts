@@ -69,6 +69,7 @@ export const I18N_STRINGS = {
         unauthorized: "error_unauthorized",
         unverified_email: "error_unverified_email",
         invalid_argument: "error_invalid_argument",
+        invalid_language: "error_invalid_language",
         item_not_found: "error_item_not_found",
         internal_error: "error_internal_error",
         domain_not_authorized: "error_domain_not_authorized",

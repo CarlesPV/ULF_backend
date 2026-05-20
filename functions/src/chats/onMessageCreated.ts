@@ -2,6 +2,7 @@ import { onValueCreated } from "firebase-functions/v2/database";
 import { admin } from "../shared/firebase";
 import { getNotificationString } from "../shared/i18n";
 import { SupportedLanguage } from "../shared/types";
+import { NotificationPayload, NotificationType, saveInAppNotification, sendNotificationToUser } from "../shared/notifications";
 
 /**
  * Trigger de Realtime Database que se ejecuta al crearse un nuevo mensaje en la ruta `/messages/{chatId}/{messageId}`.
@@ -82,58 +83,47 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                 .filter(memberId => memberId !== senderId)
                 .map(async (memberId) => {
                     try {
-                        // Obtener los ajustes de notificación e idioma de preferencia del destinatario
-                        const userSettingsSnap = await admin.database()
-                            .ref(`users/${memberId}/settings`)
+                        // Obtener la información completa del usuario destinatario para settings e idioma
+                        const userSnap = await admin.database()
+                            .ref(`users/${memberId}`)
                             .once("value");
-                        const settings = userSettingsSnap.val() || {};
-
-                        if (settings.push_notifications !== true) {
-                            return;
-                        }
+                        const userVal = userSnap.val() || {};
+                        const settings = userVal.settings || {};
 
                         // Internacionalización (i18n): Obtener la cadena en el idioma correspondiente (es, ca, en)
-                        const userLang: SupportedLanguage = settings.language || "en";
-                        const notificationTitle = getNotificationString("new_message_title", userLang);
-
-                        // Consultar los tokens de Firebase Cloud Messaging (FCM) registrados por el usuario
-                        const fcmTokensSnap = await admin.database()
-                            .ref(`users/${memberId}/fcm_tokens`)
-                            .once("value");
-
-                        if (!fcmTokensSnap.exists()) {
-                            return;
+                        let userLang: SupportedLanguage = "es";
+                        const rawLang = userVal.preferredLanguage || settings.preferredLanguage || userVal.language || settings.language;
+                        if (rawLang === "es" || rawLang === "en" || rawLang === "ca") {
+                            userLang = rawLang;
                         }
+                        const notificationTitle = getNotificationString("new_message_title", userLang);
+                        const notificationBody = isImage 
+                            ? getNotificationString("image_message", userLang)
+                            : message.text.substring(0, 100); // Limitar la vista en la barra de notificaciones
 
-                        const fcmTokens = Object.keys(fcmTokensSnap.val());
+                        const inAppPayload: NotificationPayload = {
+                            type: NotificationType.NEW_MESSAGE,
+                            title: notificationTitle,
+                            body: notificationBody,
+                            data: {
+                                type: "chat",
+                                chatId: String(chatId),
+                                messageId: String(event.params.messageId),
+                                timestamp: message.timestamp || Date.now()
+                            }
+                        };
 
-                        // Transmitir la notificación a todos los dispositivos del usuario de forma concurrente
-                        return Promise.all(
-                            fcmTokens.map((token) =>
-                                admin.messaging().send({
-                                    token: token,
-                                    notification: {
-                                        title: notificationTitle,
-                                        body: isImage 
-                                            ? getNotificationString("image_message", userLang)
-                                            : message.text.substring(0, 100) // Limitar la vista en la barra de notificaciones
-                                    },
-                                    data: {
-                                        chatId: chatId,
-                                        messageId: event.params.messageId
-                                    }
-                                }).catch((error) => {
-                                    console.warn(`Error enviando notificación al token ${token}:`, error);
-                                    // Limpieza de tokens obsoletos o inválidos para liberar almacenamiento
-                                    if (error.code === "messaging/invalid-registration-token") {
-                                        return admin.database()
-                                            .ref(`users/${memberId}/fcm_tokens/${token}`)
-                                            .remove();
-                                    }
-                                    return null;
-                                })
-                            )
-                        );
+                        // Guardar la notificación In-App concurrentemente
+                        const saveInAppPromise = saveInAppNotification(memberId, inAppPayload, userLang).catch((err) => {
+                            console.error(`Error al guardar la notificación in-app para usuario ${memberId}:`, err);
+                            return null;
+                        });
+
+                        await Promise.all([
+                            saveInAppPromise,
+                            sendNotificationToUser(memberId, inAppPayload)
+                        ]);
+                        return null;
                     } catch (memberError) {
                         console.error(`Error procesando notificaciones para usuario ${memberId}:`, memberError);
                         return null;

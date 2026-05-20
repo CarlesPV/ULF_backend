@@ -38,6 +38,14 @@ export interface Post {
 
 export type SupportedLanguage = "es" | "en" | "ca";
 
+export interface RegistrationPayload {
+    email: string;
+    password?: string;
+    name: string;
+    preferredLanguage?: SupportedLanguage;
+    language?: SupportedLanguage;
+}
+
 export interface UserProfile {
     id: string;
     name: string;
@@ -48,6 +56,7 @@ export interface UserProfile {
     photoUpdatedAt?: number;
     settings?: {
         language?: SupportedLanguage;
+        pushNotificationsEnabled?: boolean;
         push_notifications?: boolean;
         dark_mode?: boolean;
     };

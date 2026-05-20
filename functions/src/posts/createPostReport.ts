@@ -62,6 +62,10 @@ export const createPostReport = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
+    if (type !== "lost" && type !== "found") {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+    }
+
     // Validación exhaustiva de las coordenadas geográficas enviadas
     if (lat === null || lat === undefined || lng === null || lng === undefined) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.coords_required);
