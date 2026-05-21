@@ -76,6 +76,7 @@ export const I18N_STRINGS = {
         center_inactive: "error_center_inactive",
         email_already_exists: "error_email_already_exists",
         incomplete_data: "error_incomplete_data",
+        legal_acceptance_required: "error_legal_acceptance_required",
         out_of_bounds_location: "error_out_of_bounds_location",
         invalid_profile_data: "error_invalid_profile_data",
         coords_required: "error_coords_required",

@@ -44,6 +44,8 @@ export interface RegistrationPayload {
     name: string;
     preferredLanguage?: SupportedLanguage;
     language?: SupportedLanguage;
+    termsAccepted?: boolean;
+    privacyAccepted?: boolean;
 }
 
 export interface UserProfile {
@@ -61,6 +63,11 @@ export interface UserProfile {
         pushNotificationsEnabled?: boolean;
         push_notifications?: boolean;
         dark_mode?: boolean;
+    };
+    legal: {
+        termsAccepted: boolean;
+        privacyAccepted: boolean;
+        acceptedAt: number;
     };
     created_at: number;
     updated_at: number;
