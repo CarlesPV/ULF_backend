@@ -95,7 +95,7 @@
                     ".validate": "newData.isString() && newData.val().length > 0"
                 },
                 "description": {
-                    ".validate": "!newData.exists() || (newData.isString() && newData.val().length > 0)"
+                    ".validate": "!newData.exists() || newData.isString()"
                 }
             }
         },

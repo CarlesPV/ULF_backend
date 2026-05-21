@@ -191,7 +191,7 @@ describe("integration: Realtime Database rules", () => {
     ));
   });
 
-  test("empty strings are rejected on critical post fields (title, description)", async () => {
+  test("empty strings are rejected on critical post fields (title) but allowed on optional fields (description)", async () => {
     await createVerifiedUser({
       uid: "owner-1",
       email: "owner@uab.cat"
@@ -205,9 +205,9 @@ describe("integration: Realtime Database rules", () => {
     invalidTitlePost.title = "";
     await expectPermissionDenied(firebaseDb.set(postRef, invalidTitlePost));
 
-    // Intentar escribir post con descripción vacía (si el campo existe en la escritura)
-    const invalidDescPost = validPost("post-empty-test", "owner-1");
-    invalidDescPost.description = "";
-    await expectPermissionDenied(firebaseDb.set(postRef, invalidDescPost));
+    // Intentar escribir post con descripción vacía (debería ser aceptado porque es opcional)
+    const validDescPost = validPost("post-empty-test", "owner-1");
+    validDescPost.description = "";
+    await expect(firebaseDb.set(postRef, validDescPost)).resolves.toBeUndefined();
   });
 });
