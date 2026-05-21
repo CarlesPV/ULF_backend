@@ -83,6 +83,23 @@ export const onMessageCreated = onValueCreated("/messages/{chatId}/{messageId}",
                 .filter(memberId => memberId !== senderId)
                 .map(async (memberId) => {
                     try {
+                        // Verificar si el usuario ya está en el chat activo (presencia)
+                        let isChatActive = false;
+                        try {
+                            const currentChatSnap = await admin.database()
+                                .ref(`users/${memberId}/status/currentChat`)
+                                .once("value");
+                            if (currentChatSnap.exists() && currentChatSnap.val() === chatId) {
+                                isChatActive = true;
+                            }
+                        } catch (presenceError) {
+                            console.error(`Error al verificar chat activo para usuario ${memberId}:`, presenceError);
+                        }
+
+                        if (isChatActive) {
+                            return null;
+                        }
+
                         // Obtener la información completa del usuario destinatario para settings e idioma
                         const userSnap = await admin.database()
                             .ref(`users/${memberId}`)

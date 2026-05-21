@@ -15,7 +15,7 @@ function validPost(id, userId = "owner-1") {
     center_id: "uab",
     type: "lost",
     title: "Mochila roja",
-    description: "",
+    description: "Mochila escolar de color rojo.",
     category: "bags",
     status: "active",
     coords: {
@@ -149,5 +149,65 @@ describe("integration: Realtime Database rules", () => {
       firebaseDb.ref(client.database, "users/other-user/preferredLanguage"),
       "es"
     ));
+  });
+
+  test("empty strings are rejected on critical user profile fields", async () => {
+    const userUid = "user-empty-fields-1";
+    await createVerifiedUser({
+      uid: userUid,
+      email: "emptyfields@uab.cat"
+    });
+    
+    // Configuración inicial del usuario
+    await adminDb().ref(`users/${userUid}`).set({
+      id: userUid,
+      center_id: "uab",
+      role: "student",
+      email: "emptyfields@uab.cat",
+      name: "Test User",
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      is_deleted: false
+    });
+
+    const client = await signInClient(createClientApp(), "emptyfields@uab.cat");
+
+    // Intentar escribir un nombre vacío
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/name`),
+      ""
+    ));
+
+    // Intentar escribir un email vacío
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/email`),
+      ""
+    ));
+
+    // Intentar escribir un id vacío
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/id`),
+      ""
+    ));
+  });
+
+  test("empty strings are rejected on critical post fields (title, description)", async () => {
+    await createVerifiedUser({
+      uid: "owner-1",
+      email: "owner@uab.cat"
+    });
+    const client = await signInClient(createClientApp(), "owner@uab.cat");
+
+    const postRef = firebaseDb.ref(client.database, "posts/post-empty-test");
+
+    // Intentar escribir post con título vacío
+    const invalidTitlePost = validPost("post-empty-test", "owner-1");
+    invalidTitlePost.title = "";
+    await expectPermissionDenied(firebaseDb.set(postRef, invalidTitlePost));
+
+    // Intentar escribir post con descripción vacía (si el campo existe en la escritura)
+    const invalidDescPost = validPost("post-empty-test", "owner-1");
+    invalidDescPost.description = "";
+    await expectPermissionDenied(firebaseDb.set(postRef, invalidDescPost));
   });
 });
