@@ -281,5 +281,124 @@ describe("onMessageCreated trigger", () => {
             })
         }));
     });
+
+    test("does not send push or in-app notifications if receiver is in the active chat", async () => {
+        const env = setupCallableTestEnv({
+            onceByPath: {
+                "chats/chat-1/members": {
+                    "sender-1": true,
+                    "receiver-1": true
+                },
+                "users/receiver-1/status/currentChat": "chat-1",
+                "users/receiver-1": {
+                    settings: {
+                        push_notifications: true,
+                        language: "es"
+                    }
+                },
+                "users/receiver-1/fcm_tokens": {
+                    "receiver-token": true
+                }
+            }
+        });
+        const { onMessageCreated } = require("../../lib/chats/onMessageCreated");
+
+        await onMessageCreated(messageEvent({
+            text: "Hola, estás ahí?",
+            timestamp: 12345,
+            sender_id: "sender-1"
+        }, "chat-1", "message-100"));
+
+        // Verificar que NO se enviaron notificaciones push
+        expect(env.messagingApi.send).not.toHaveBeenCalled();
+
+        // Verificar que NO se crearon registros de notificación in-app (la única escritura debe ser la actualización del chat metadata en /)
+        const inAppNotifications = env.writes.filter(w => w.op === "set" && w.path.startsWith("users/receiver-1/notifications"));
+        expect(inAppNotifications.length).toBe(0);
+
+        // Debería actualizar los metadatos del chat y de user_chats normalmente
+        expect(env.writes[0]).toEqual({
+            op: "update",
+            path: "",
+            value: {
+                "chats/chat-1/last_message": "Hola, estás ahí?",
+                "chats/chat-1/last_message_time": 12345,
+                "user_chats/sender-1/chat-1": 12345,
+                "user_chats/receiver-1/chat-1": 12345
+            }
+        });
+    });
+
+    test("sends notifications if receiver is in a different chat", async () => {
+        const env = setupCallableTestEnv({
+            onceByPath: {
+                "chats/chat-1/members": {
+                    "sender-1": true,
+                    "receiver-1": true
+                },
+                "users/receiver-1/status/currentChat": "chat-different",
+                "users/receiver-1": {
+                    settings: {
+                        push_notifications: true,
+                        language: "es"
+                    }
+                },
+                "users/receiver-1/fcm_tokens": {
+                    "receiver-token": true
+                }
+            }
+        });
+        const { onMessageCreated } = require("../../lib/chats/onMessageCreated");
+
+        await onMessageCreated(messageEvent({
+            text: "Hola, estás ahí?",
+            timestamp: 12345,
+            sender_id: "sender-1"
+        }, "chat-1", "message-100"));
+
+        // Debería enviar push
+        expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
+
+        // Debería guardar in-app
+        const inAppNotifications = env.writes.filter(w => w.op === "set" && w.path.startsWith("users/receiver-1/notifications"));
+        expect(inAppNotifications.length).toBe(1);
+    });
+
+    test("sends notifications defensively if reading presence status fails", async () => {
+        jest.spyOn(console, "error").mockImplementation(() => {});
+        const env = setupCallableTestEnv({
+            onceByPath: {
+                "chats/chat-1/members": {
+                    "sender-1": true,
+                    "receiver-1": true
+                },
+                "users/receiver-1": {
+                    settings: {
+                        push_notifications: true,
+                        language: "es"
+                    }
+                },
+                "users/receiver-1/fcm_tokens": {
+                    "receiver-token": true
+                }
+            },
+            onceRejectsByPath: {
+                "users/receiver-1/status/currentChat": new Error("Database timeout")
+            }
+        });
+        const { onMessageCreated } = require("../../lib/chats/onMessageCreated");
+
+        await onMessageCreated(messageEvent({
+            text: "Hola, estás ahí?",
+            timestamp: 12345,
+            sender_id: "sender-1"
+        }, "chat-1", "message-100"));
+
+        // Al fallar la lectura, se asume que no está en el chat y se envían notificaciones
+        expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
+
+        const inAppNotifications = env.writes.filter(w => w.op === "set" && w.path.startsWith("users/receiver-1/notifications"));
+        expect(inAppNotifications.length).toBe(1);
+    });
 });
 

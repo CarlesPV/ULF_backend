@@ -190,7 +190,6 @@ describe("createPostReport", () => {
                 user_id: "user1",
                 center_id: "uab",
                 title: "Objeto perdido",
-                description: "",
                 status: "active",
                 coords: expect.objectContaining({
                     lat: 41.50,
