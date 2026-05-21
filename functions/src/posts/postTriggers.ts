@@ -7,7 +7,7 @@ import { notifyMultipleUsersOfMatch } from "../shared/notifications";
 import { getHaversineDistance } from "../shared/utils";
 import { I18N_STRINGS } from "../shared/i18n";
 import * as functions from "firebase-functions";
-import { logger } from "firebase-functions";
+import { logger, tasks } from "firebase-functions";
 
 // Margen de tolerancia de 50 metros para compensar punto flotante y GPS (según roadmap.md)
 const LOCATION_TOLERANCE_METERS = 50;
@@ -64,16 +64,34 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
     }
 
     // Traducción en segundo plano para habilitar compatibilidad multiidioma en búsquedas
+    const translationTasks: Promise<any>[] = [];
+
     if (post.description) {
-        tasks.push(
+        translationTasks.push(
             translateText(post.description, DEFAULT_LANGUAGE)
                 .then((translation: string) => snapshot.ref.update({
                     translated_description: translation.toLowerCase()
                 }))
                 .catch((error: any) => {
-                    console.error(`Error traduciendo el post ${event.params.postId}:`, error);
+                    console.error(`Error traduciendo descripción del post ${event.params.postId}:`, error);
                 })
         );
+    }
+
+    if (post.title) {
+        translationTasks.push(
+            translateText(post.title, DEFAULT_LANGUAGE)
+                .then((translation: string) => snapshot.ref.update({
+                    translated_title: translation.toLowerCase()
+                }))
+                .catch((error: any) => {
+                    console.error(`Error traduciendo título del post ${event.params.postId}:`, error);
+                })
+        );
+    }
+
+    if (translationTasks.length > 0) {
+        tasks.push(Promise.all(translationTasks));
     }
 
     // Ejecutar búsqueda de coincidencias y notificar a los usuarios en paralelo

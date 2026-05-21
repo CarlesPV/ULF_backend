@@ -3,37 +3,54 @@ import { admin } from "../shared/firebase";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { I18N_STRINGS } from "../shared/i18n";
 
+const SCORE_THRESHOLDS = {
+    MIN_MATCH_SCORE: 0.5,
+    TITLE_MAX: 1.0,
+    DESCRIPTION_MAX: 0.5,
+    IMAGE_BONUS: 0.25,
+    DATE_MAX: 0.2,
+};
+
+const STOP_WORDS = new Set([
+    "the", "and", "for", "but", "not", "con", "del", "una", "los", "las",
+    "por", "que", "els", "les", "per", "sus", "com", "out", "you", "him",
+    "her", "its", "our", "are", "was", "has", "had", "bin", "with", "this",
+    "that", "from", "have", "they", "will", "been", "were", "what", "when"
+]);
+
 /**
- * Algoritmo de emparejamiento semántico para encontrar coincidencias potenciales entre objetos perdidos y encontrados.
- * 
- * Esta función de Cloud Call realiza las siguientes acciones ordenadas y seguras:
- * 1. Valida la autenticación y que el correo del usuario solicitante esté debidamente verificado.
- * 2. Valida la presencia de parámetros obligatorios (`center_id`, `category`, `type`).
- * 3. Determina el tipo de objeto opuesto a buscar (`found` busca `lost` y viceversa).
- * 4. Obtiene concurrentemente desde `/active_posts/{center_id}` solo los posts actualmente activos del centro educativo.
- * 5. Soporte multiidioma (i18n): Traduce los términos de búsqueda recopilados del post origen (`color` y `description`)
- *    a un idioma base unificado para evitar falsos negativos debidos al idioma de registro.
- * 6. Algoritmo de Puntuación (Scoring):
- *    - Inicializa una puntuación base de `1.0` si el post objetivo coincide en tipo y categoría.
- *    - Divide la descripción del post origen en palabras clave significativas.
- *    - Incrementa el score en `0.5` por cada palabra clave que se localice dentro de la descripción (o traducción) del post destino.
- * 7. Ordena los emparejamientos de mayor a menor puntuación y retorna las 5 mejores coincidencias sugeridas.
- * 
- * @param request - Objeto de petición que contiene los datos del post recién creado:
- *   - center_id: Identificador único del centro educativo.
- *   - category: Categoría del objeto (ej. "tecnologia", "ropa").
- *   - type: Tipo de publicación original ("lost" o "found").
- *   - color: (Opcional) Color característico del objeto.
- *   - description: (Opcional) Descripción detallada del objeto para el procesamiento lingüístico.
- * 
- * @returns Un objeto con la lista (`matches`) de los posts coincidentes ordenada por relevancia y limitada a 5 elementos.
- * 
- * @throws {HttpsError}
- *   - 'permission-denied': Si el solicitante no tiene el correo verificado.
- *   - 'invalid-argument': Si faltan los campos estructurales mandatorios.
+ * Tokeniza y filtra stop words de un texto traducido.
  */
+function tokenize(text: string): string[] {
+    return text
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+}
+
+/**
+ * Ratio de palabras de `queryTokens` que aparecen en `targetText`.
+ * Retorna un valor entre 0 y 1.
+ */
+function keywordMatchRatio(queryTokens: string[], targetText: string): number {
+    if (queryTokens.length === 0 || !targetText) return 0;
+    const matches = queryTokens.filter(w => targetText.includes(w)).length;
+    return matches / queryTokens.length;
+}
+
+/**
+ * Score por proximidad temporal entre dos timestamps (ms).
+ * Usa decaimiento exponencial: máximo SCORE si mismo día, ~0 si > 30 días.
+ */
+function dateProximityScore(ts1: number, ts2: number, maxScore: number): number {
+    if (!ts1 || !ts2) return 0;
+    const diffDays = Math.abs(ts1 - ts2) / (1000 * 60 * 60 * 24);
+    // e^(-0.1 * días): baja suavemente. A 7 días → ~0.5 del máximo, a 30 días → ~0.05
+    return maxScore * Math.exp(-0.1 * diffDays);
+}
+
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
-    const { center_id, category, type, color, description, title } = request.data;
+    const { center_id, category, type, description, title, location, postImageUrl, created_at } = request.data;
 
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
@@ -42,71 +59,92 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
-    // Buscar objetos en la categoría contraria para emparejamiento
     const targetType = (type === "found") ? "lost" : "found";
 
-    // Consultar identificadores de posts activos usando el índice secundario del centro filtrado por tipo objetivo
     const activeRefs = await admin.database().ref(`active_posts/${center_id}/${targetType}`).once("value");
     if (!activeRefs.exists()) return { matches: [] };
 
     const activeIds = Object.keys(activeRefs.val());
+    const postSnapshots = await Promise.all(
+        activeIds.map(id => admin.database().ref(`posts/${id}`).once("value"))
+    );
 
-    // Obtener los datos completos de los posts de forma paralela y eficiente
-    const postPromises = activeIds.map(id => admin.database().ref(`posts/${id}`).once("value"));
-    const postSnapshots = await Promise.all(postPromises);
+    // Traducir y tokenizar título + descripción + location del post origen
+    const rawText = `${title || ""} ${description || ""} ${location || ""}`.trim();
+    let titleTokens: string[] = [];
+    let descTokens: string[] = [];
+    let locationTokens: string[] = [];
 
-    // Preparar términos lingüísticos y traducción automática al idioma unificado del backend
-    let searchTerms = `${title || ""} ${color || ""} ${description || ""}`.trim();
-    let searchWords: string[] = [];
-    
-    if (searchTerms !== "") {
-        let translation = searchTerms;
+    if (rawText) {
+        let translatedTitle = title || "";
+        let translatedDesc = description || "";
+        let translatedLocation = location || "";
+
         try {
-            translation = await translateText(searchTerms, DEFAULT_LANGUAGE);
+            if (title) translatedTitle = await translateText(title, DEFAULT_LANGUAGE);
+            if (description) translatedDesc = await translateText(description, DEFAULT_LANGUAGE);
+            if (location) translatedLocation = await translateText(location, DEFAULT_LANGUAGE);
         } catch (error) {
             console.error("Error en traducción:", error);
         }
-        const stopWords = new Set(["the", "and", "for", "but", "not", "con", "del", "una", "los", "las", "por", "que", "els", "les", "per", "sus", "com", "out", "you", "him", "her", "its", "our", "are", "was", "has", "had", "bin"]);
-        searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2 && !stopWords.has(w));
+
+        titleTokens = tokenize(translatedTitle);
+        descTokens = tokenize(translatedDesc);
+        locationTokens = tokenize(translatedLocation);
     }
 
-    // Filtrado semántico y cálculo de puntuación (Scoring)
+    const hasSourceImage = !!(postImageUrl || request.data.imageUrl || request.data.photo_url);
+
     const potentialMatches: any[] = [];
-    
+
     for (const snap of postSnapshots) {
         if (!snap.exists()) continue;
         const post = snap.val();
 
-        if (post.type === targetType && post.category === category && !post.is_deleted) {
-            let score = 1.0;
-            const targetDesc = `${post.title || ""} ${post.translated_description || post.description?.toLowerCase() || ""}`.toLowerCase();
+        // Filtros obligatorios (hard filters) — no contribuyen al score
+        if (post.type !== targetType || post.category !== category || post.is_deleted) continue;
 
-            if (searchWords.length > 0 && targetDesc) {
-                let matchCount = 0;
-                for (const word of searchWords) {
-                    if (targetDesc.includes(word)) matchCount++;
-                }
-                // Peso incremental por cada coincidencia de palabra clave
-                score += (matchCount * 0.5);
-            }
+        let score = 0;
 
-            potentialMatches.push({
-                id: post.id,
-                title: post.title,
-                description: post.description,
-                score: score,
-                photo_path: post.photo_path,
-                postImageUrl: post.postImageUrl || post.imageUrl || post.photo_url || "",
-                created_at: post.created_at || post.date || 0
-            });
+        // 1. TÍTULO — ratio de coincidencia (0 a TITLE_MAX)
+        const targetTitleText = (post.translated_title || post.title || "").toLowerCase();
+        const titleRatio = keywordMatchRatio(titleTokens, targetTitleText);
+        score += titleRatio * SCORE_THRESHOLDS.TITLE_MAX;
+
+        // 2. DESCRIPCIÓN — ratio de coincidencia, capped a DESCRIPTION_MAX
+        const targetDescText = (post.translated_description || post.description || "").toLowerCase();
+        const descRatio = keywordMatchRatio(descTokens, targetDescText);
+        score += Math.min(descRatio * SCORE_THRESHOLDS.DESCRIPTION_MAX * 2, SCORE_THRESHOLDS.DESCRIPTION_MAX);
+
+        // 3. IMAGEN — bonus si ambos posts tienen imagen
+        const hasTargetImage = !!(post.postImageUrl || post.imageUrl || post.photo_url || post.photo_path);
+        if (hasSourceImage && hasTargetImage) {
+            score += SCORE_THRESHOLDS.IMAGE_BONUS;
         }
+
+        // 4. FECHA — proximidad temporal con decaimiento exponencial
+        const sourceTs = typeof created_at === "number" ? created_at : 0;
+        const targetTs = typeof post.created_at === "number" ? post.created_at : (post.date || 0);
+        score += dateProximityScore(sourceTs, targetTs, SCORE_THRESHOLDS.DATE_MAX);
+
+        // Filtrar por score mínimo
+        if (score < SCORE_THRESHOLDS.MIN_MATCH_SCORE) continue;
+
+        potentialMatches.push({
+            id: post.id,
+            title: post.title,
+            description: post.description,
+            score: Math.round(score * 1000) / 1000,
+            photo_path: post.photo_path,
+            postImageUrl: post.postImageUrl || post.imageUrl || post.photo_url || "",
+            created_at: post.created_at || post.date || 0
+        });
     }
 
-    // Retornar las 5 coincidencias de mayor relevancia (más recientes en caso de empate)
-    return { 
+    return {
         matches: potentialMatches
             .sort((a, b) => {
-                if (b.score !== a.score) return b.score - a.score;
+                if (Math.abs(b.score - a.score) > 0.001) return b.score - a.score;
                 return (b.created_at || 0) - (a.created_at || 0);
             })
             .slice(0, 5)
