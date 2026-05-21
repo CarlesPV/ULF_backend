@@ -73,24 +73,20 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const rawText = `${title || ""} ${description || ""} ${location || ""}`.trim();
     let titleTokens: string[] = [];
     let descTokens: string[] = [];
-    let locationTokens: string[] = [];
 
     if (rawText) {
         let translatedTitle = title || "";
         let translatedDesc = description || "";
-        let translatedLocation = location || "";
 
         try {
             if (title) translatedTitle = await translateText(title, DEFAULT_LANGUAGE);
             if (description) translatedDesc = await translateText(description, DEFAULT_LANGUAGE);
-            if (location) translatedLocation = await translateText(location, DEFAULT_LANGUAGE);
         } catch (error) {
             console.error("Error en traducción:", error);
         }
 
         titleTokens = tokenize(translatedTitle);
         descTokens = tokenize(translatedDesc);
-        locationTokens = tokenize(translatedLocation);
     }
 
     const hasSourceImage = !!(postImageUrl || request.data.imageUrl || request.data.photo_url);
