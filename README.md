@@ -1,102 +1,113 @@
 # UniLost & Found (ULF) - Backend
 
-Este repositorio contiene el núcleo lógico serverless de la plataforma UniLost & Found, diseñado para gestionar objetos perdidos y encontrados en entornos universitarios.
+Backend serverless de UniLost & Found sobre Firebase. Contiene Cloud Functions, reglas de Realtime Database, reglas de Storage, seed inicial de centros y documentacion tecnica.
 
-## Tecnologías Principales
-- **Firebase Cloud Functions (V2):** Lógica distribuida y segura en TypeScript.
-- **Firebase Realtime Database:** Base de datos NoSQL de baja latencia para perfiles, posts y chats.
-- **Firebase Storage:** Almacenamiento optimizado de imágenes con Vision API.
-- **Google Cloud Translation API:** Internacionalización automática de contenidos.
+Revision de documentacion: 22 de mayo de 2026.
 
-## Estructura del Proyecto
-- `functions/`: Código fuente de las Cloud Functions, configuración de TypeScript y tests.
-- `database/rules/`: Definición de Security Rules para la base de datos.
-- `storage/rules/`: Políticas de acceso a archivos.
-- `database/seed/`: Scripts de inicialización de centros y datos base.
-- `docs/`: Documentación detallada de arquitectura, esquemas y reglas.
+## Tecnologias principales
 
-## Guía de Mantenimiento y Despliegue
+- Firebase Cloud Functions en TypeScript, runtime Node.js 20.
+- Firebase Realtime Database para usuarios, posts, chats, mensajes, notificaciones e indices.
+- Firebase Storage para imagenes de posts, chats y perfil.
+- Firebase Auth para identidad y verificacion de correo.
+- Firebase Cloud Messaging para push notifications.
+- Google Cloud Translation API y Vision API para busqueda multiidioma y etiquetas visuales.
+- Jest y Firebase Emulator Suite para pruebas unitarias e integracion.
 
-### 1. Inicialización de la Base de Datos (Seeding)
-Para cargar los centros universitarios iniciales:
-1. Obtén el archivo JSON de tu Service Account desde la consola de Firebase.
-2. Ejecuta el script de seed:
-```bash
-cd database/seed
-export FIREBASE_DATABASE_URL="https://tu-proyecto.firebaseio.com"
-export FIREBASE_SERVICE_ACCOUNT='{...contenido del json...}'
-npx ts-node seed_db.ts
+## Estructura
+
+```text
+functions/                 # Cloud Functions, TypeScript y tests
+database/rules/            # Security Rules de Realtime Database
+database/seed/             # Seed de centros
+storage/rules/             # Security Rules de Firebase Storage
+docs/                      # Documentacion tecnica
+firebase.json              # Configuracion Firebase y emuladores
 ```
 
-### 2. Desarrollo y Pruebas
-Para ejecutar solo la suite de pruebas unitarias:
+## Cloud Functions exportadas
+
+Callables:
+
+- `secureUniversityRegistration`
+- `createPostReport`
+- `updatePostStatus`
+- `recordPostView`
+- `getFilteredFeed`
+- `checkPotentialMatches`
+- `backfillTermsVersion`
+- `saveFcmToken`
+- `markNotificationsRead`
+- `getOrCreateChat`
+
+Triggers y jobs:
+
+- `onPostCreated`, `onPostUpdated`, `onPostDeleted`
+- `onMessageCreated`
+- `onImageUploaded`
+- `onProfileImageUploaded`
+- `onUserProfileUpdated`
+- `purgeUnverifiedAccounts`
+
+## Desarrollo
+
+Instalar dependencias y compilar:
+
 ```bash
 cd functions
 npm install
+npm run build
+```
+
+Ejecutar tests:
+
+```bash
 npm run test:unit
-```
-
-Para ejecutar los tests de integración con Firebase Emulator Suite se necesita **Java 21**:
-```bash
-cd functions
 npm run test:integration
-```
-
-Para validar todo el backend antes de una PR o despliegue:
-```bash
-cd functions
 npm run test:all
 ```
 
-### 3. Despliegue
-Para desplegar todos los componentes al entorno de producción:
+Los tests de integracion usan Firebase Emulator Suite y requieren Java 21.
+
+## Seed de centros
+
 ```bash
-# Requiere Firebase CLI instalado y autenticado
+cd database/seed
+npm install
+export FIREBASE_DATABASE_URL="https://tu-proyecto.firebaseio.com"
+export FIREBASE_SERVICE_ACCOUNT='{...contenido del service account json...}'
+npm run seed
+```
+
+El seed actual carga el centro `uab` con dominios autorizados, bounds, location, radio y poligono.
+
+## Despliegue
+
+```bash
+cd functions
+npm run deploy
+```
+
+Equivale a:
+
+```bash
 firebase deploy --only database,functions,storage
 ```
 
-## Documentación de Referencia
-- [Arquitectura y Callables](docs/architecture.md)
-- [Esquema de Datos](docs/database.schema.md)
-- [Reglas de Seguridad (DB)](docs/database.rules.md)
-- [Reglas de Storage](docs/storage.rules.md)
-- [Testing Backend](docs/testing.md)
-- [🔔 Sistema de Notificaciones de Matches](docs/NOTIFICATION_IMPLEMENTATION.md) **← NUEVO**
+El workflow `.github/workflows/deploy.yml` ejecuta tests unitarios e integracion en PR hacia `develop` o `master`; en push a esas ramas despliega y despues ejecuta el seed.
 
-## 🔔 Notificaciones de Matches (Nuevo en Mayo 2026)
+## Documentacion
 
-Se implementó un sistema automático de notificaciones que alerta a usuarios cuando se encuentran coincidencias de objetos:
-
-```
-Usuario A busca "Llavero" 
-    → Sistema encuentra matches
-    → Notifica a usuarios que publicaron objetos similares
-    → Usuarios reciben notificación push instantánea
-```
-
-O alternativamente:
-
-```
-Usuario B publica "Encontré llavero"
-    → Sistema busca automáticamente objetos perdidos similares
-    → Notifica a usuarios que están buscando
-    → Usuarios reciben notificación sin tener que buscar manualmente
-```
-
-**Características:**
-- ✅ Automático y en tiempo real
-- ✅ No interfiere con operaciones principales
-- ✅ Multiidioma (ES/EN/CA)
-- ✅ Usa Firebase Cloud Messaging (FCM)
-- ✅ Auto-limpieza de tokens inválidos
-
-**Documentación:**
-- [Implementación Completa](docs/match-notifications.md)
-- [Guía de Integración](docs/NOTIFICATION_INTEGRATION_GUIDE.md)
+- [Arquitectura y funciones](docs/architecture.md)
+- [Esquema RTDB](docs/database.schema.md)
+- [Reglas RTDB](docs/database.rules.md)
+- [Reglas Storage](docs/storage.rules.md)
+- [Testing](docs/testing.md)
+- [Feed filtrado](docs/feed.md)
+- [Matcher](docs/matcher.md)
+- [Notificaciones de matches](docs/match-notifications.md)
+- [Estado de implementacion](docs/implementation-status.md)
 
 ## Licencia
 
-Este proyecto está bajo la Licencia MIT. Para más detalles, consulta el archivo [LICENSE](LICENSE).
-
----
-*Desarrollado para el proyecto final de grado - UAB.*
+Proyecto bajo licencia MIT. Consulta [LICENSE](LICENSE).

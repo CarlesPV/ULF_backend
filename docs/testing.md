@@ -24,10 +24,10 @@ Ubicación: `functions/tests/unit/`
 
 Usan Jest y mocks manuales. No levantan emuladores ni conectan con Firebase real. Cubren callables, triggers, helpers compartidos, notificaciones, storage y mantenimiento.
 
-Estado actual:
+Estado actual en el arbol de tests:
 
-- 16 suites.
-- 105 tests.
+- 18 suites unitarias (`*.test.js`).
+- 137 casos declarados con `test(...)` o `it(...)`.
 
 ## Tests De Integración
 
@@ -54,8 +54,14 @@ Flujos cubiertos:
 - Creación de chats e índices `user_chats`.
 - Trigger `onMessageCreated` actualizando `last_message`.
 - Reglas de seguridad de Realtime Database para posts, mensajes y vistas.
+- Reglas de seguridad de Storage para posts, perfiles y chats.
 
 La suite evita servicios externos no emulados. No prueba Vision, Translate ni FCM reales.
+
+Estado actual en integracion:
+
+- 6 suites de integracion (`*.integration.test.js`).
+- 21 casos declarados con `test(...)` o `it(...)`.
 
 ## CI/CD
 

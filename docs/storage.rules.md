@@ -1,31 +1,52 @@
-# Reglas de Seguridad - Firebase Storage (ULF)
+# Reglas de Firebase Storage
 
-Este documento detalla las políticas de almacenamiento para imágenes de posts y perfiles de usuario.
+Documento alineado con `storage/rules/storage.rules`.
 
-## Conceptos Clave
-- **Restricción de Tamaño:** Límite global de **5MB** por archivo.
-- **Formatos Permitidos:** El cliente puede subir imágenes en formato **JPEG y PNG**.
-- **Optimización WebP:** El sistema (vía Cloud Functions o extensiones) convierte las imágenes a **WebP** para optimizar la carga en el dispositivo móvil.
-- **Verificación Obligatoria:** Solo usuarios con correo institucional verificado pueden leer o escribir en el storage.
+## Politica general
 
-## Estructura de Directorios y Permisos
+- El limite de subida es 5 MB.
+- Las reglas aceptan cualquier `contentType` que cumpla `image/.*` y tambien `application/octet-stream`.
+- La lectura de imagenes de posts y perfil es publica (`allow read: if true`).
+- Las imagenes de chat solo se leen con usuario autenticado.
+- La version optimizada `users/{userId}/profile_image.webp` no puede escribirse desde cliente.
 
-### 1. Imágenes de Posts (`/posts/{postId}/{imageName}`)
-* **Lectura:** Cualquier usuario verificado (incluye originales y .webp).
-* **Escritura (Originales):** Cualquier usuario verificado.
-    * **Restricciones:** < 5MB, tipo `image/jpeg` o `image/png`.
-* **Escritura (Optimizadas):** Bloqueada para clientes. Solo el Backend (Admin SDK) genera las versiones WebP.
+## Rutas
 
-### 3. Fotos de Perfil (`/users/{userId}/profile_image`)
-* **Lectura:** Cualquier usuario verificado.
-* **Escritura:** Solo el dueño del perfil (`request.auth.uid == userId`).
-* **Restricciones:** < 5MB, tipo `image/jpeg` o `image/png`.
+### `/posts/{postId}/{imageName}`
 
-### 4. Fotos de Perfil Optimizadas (`/users/{userId}/profile_image.webp`)
-* **Lectura:** Cualquier usuario verificado.
-* **Escritura:** Bloqueada para clientes. Generadas automáticamente por Cloud Functions en formato WebP (512x512).
+| Operacion | Regla |
+| :--- | :--- |
+| Read | Publica. |
+| Create / update | Usuario autenticado, archivo menor de 5 MB y tipo `image/.*` o `application/octet-stream`. |
+| Delete | Usuario autenticado. |
 
-## Consideraciones para el Frontend (Flutter)
-1. **Compresión Local:** Se recomienda comprimir las imágenes en el dispositivo antes de subirlas para asegurar que no superen los 5MB y ahorrar datos al usuario.
-2. **Formatos:** La cámara de Flutter suele generar JPEGs; asegúrese de que el `Content-Type` de la cabecera de subida sea correcto.
-3. **Caché:** Las imágenes optimizadas en WebP ofrecen un rendimiento superior en la lista de feeds.
+La autoria final del post y la consistencia con RTDB se controlan fuera de Storage. El cliente actual sube imagenes de post ya comprimidas como WebP; el trigger `onImageUploaded` extrae etiquetas Vision y actualiza `vision_labels`.
+
+### `/users/{userId}/profile_image`
+
+| Operacion | Regla |
+| :--- | :--- |
+| Read | Publica. |
+| Write | Usuario autenticado cuyo `uid` coincide con `userId`, archivo menor de 5 MB y tipo `image/.*` o `application/octet-stream`. |
+
+### `/users/{userId}/profile_image.webp`
+
+| Operacion | Regla |
+| :--- | :--- |
+| Read | Publica. |
+| Write | Bloqueada para cliente. Solo Admin SDK / Cloud Functions puede escribirla. |
+
+### `/chats/{chatId}/{imageId}`
+
+| Operacion | Regla |
+| :--- | :--- |
+| Read | Usuario autenticado. |
+| Write | Usuario autenticado, archivo menor de 5 MB y tipo `image/.*` o `application/octet-stream`. |
+
+Firebase Storage Rules no puede consultar Realtime Database directamente; por eso la pertenencia real al chat se valida en las capas de aplicacion/backend, no en esta regla.
+
+## Consideraciones para clientes
+
+- Comprimir antes de subir para respetar el limite de 5 MB.
+- En posts, mantener `imageUrl` / `postImageUrl` en RTDB sincronizados con la URL descargable.
+- En perfil, subir a `users/{uid}/profile_image` o ruta compatible con los triggers de perfil.
