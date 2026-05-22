@@ -14,7 +14,7 @@
             "$uid": {
                 ".write": "auth != null && auth.uid === $uid",
                 ".read": "auth != null && auth.uid === $uid",
-                ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name', 'created_at', 'updated_at', 'is_deleted', 'legal']) && newData.child('id').val() === $uid && (newData.child('updated_at').val() === now || data.child('updated_at').val() === newData.child('updated_at').val()) && (!newData.child('photoUrl').exists() || newData.child('photoUrl').isString())",
+                ".validate": "newData.hasChildren(['id', 'center_id', 'role', 'email', 'name']) && newData.child('id').val() === $uid && (newData.child('updated_at').val() === now || data.child('updated_at').val() === newData.child('updated_at').val()) && (!newData.child('photoUrl').exists() || newData.child('photoUrl').isString())",
                 "role": {
                     ".validate": "(!data.exists() && newData.val() === 'student') || (data.exists() && newData.val() === data.val())"
                 },
@@ -74,7 +74,7 @@
                         ".validate": "newData.isBoolean()"
                     },
                     "acceptedAt": {
-                        ".validate": "newData.isNumber() && newData.val() <= now"
+                        ".validate": "newData.isNumber()"
                     },
                     "$other": {
                         ".validate": false
