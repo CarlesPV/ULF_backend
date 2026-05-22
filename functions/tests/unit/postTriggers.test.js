@@ -413,6 +413,85 @@ describe("post triggers", () => {
     });
   });
 
+  test("onPostUpdated disables chats in cascade when post status changes to returned", async () => {
+    const env = setupCallableTestEnv({
+      onceByQuery: {
+        "chats|orderByChild:post_id|equalTo:post-1": {
+          "chat-1": { post_id: "post-1", post_title: "Objeto" }
+        }
+      }
+    });
+
+    const { onPostUpdated } = require("../../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ status: "active", is_deleted: false, center_id: "uab" }) },
+        after: { val: () => ({ status: "returned", is_deleted: false, center_id: "uab" }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateOp.value).toEqual({
+      "chats/chat-1/isActive": false,
+      "chats/chat-1/disabledReason": "resolved"
+    });
+  });
+
+  test("onPostUpdated disables chats in cascade when post is soft deleted", async () => {
+    const env = setupCallableTestEnv({
+      onceByQuery: {
+        "chats|orderByChild:post_id|equalTo:post-1": {
+          "chat-1": { post_id: "post-1", post_title: "Objeto" }
+        }
+      }
+    });
+
+    const { onPostUpdated } = require("../../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ status: "active", is_deleted: false, center_id: "uab" }) },
+        after: { val: () => ({ status: "active", is_deleted: true, center_id: "uab" }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateOp.value).toEqual({
+      "chats/chat-1/isActive": false,
+      "chats/chat-1/disabledReason": "deleted"
+    });
+  });
+
+  test("onPostDeleted disables chats in cascade when post is physically deleted", async () => {
+    const env = setupCallableTestEnv({
+      onceByQuery: {
+        "chats|orderByChild:post_id|equalTo:post-1": {
+          "chat-1": { post_id: "post-1", post_title: "Objeto" }
+        }
+      }
+    });
+
+    const { onPostDeleted } = require("../../lib/posts/postTriggers");
+
+    await onPostDeleted(deletedEvent({
+      center_id: "uab",
+      type: "lost"
+    }, "post-1"));
+
+    const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateOp.value).toEqual({
+      "chats/chat-1/isActive": false,
+      "chats/chat-1/disabledReason": "deleted"
+    });
+  });
+
   describe("geographic validation", () => {
     const validCenter = {
       id: "uab",

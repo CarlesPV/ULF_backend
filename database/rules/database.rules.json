@@ -169,7 +169,7 @@
             "$chat_id": {
                 ".read": "auth != null && auth.token.email_verified === true && root.child('chats').child($chat_id).child('members').child(auth.uid).val() === true",
                 "$message_id": {
-                    ".write": "auth != null && auth.token.email_verified === true && root.child('chats').child($chat_id).child('members').child(auth.uid).val() === true && !data.exists()",
+                    ".write": "auth != null && auth.token.email_verified === true && root.child('chats').child($chat_id).child('members').child(auth.uid).val() === true && root.child('chats').child($chat_id).child('isActive').val() !== false && !data.exists()",
                     ".validate": "newData.hasChildren(['id', 'sender_id', 'timestamp']) && newData.child('sender_id').val() === auth.uid && newData.child('timestamp').isNumber() && newData.child('timestamp').val() <= now && (!newData.child('messageType').exists() || (newData.child('messageType').isString() && newData.child('messageType').val().matches(/^(text|image)$/))) && (newData.child('messageType').val() === 'image' ? newData.child('imageUrl').isString() : newData.child('text').isString())"
                 }
             }
