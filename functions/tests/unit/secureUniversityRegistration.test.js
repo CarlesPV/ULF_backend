@@ -319,4 +319,59 @@ describe("secureUniversityRegistration", () => {
       message: "error_legal_acceptance_required"
     });
   });
+
+  test("sets acceptedTermsVersion to null by default if not provided", async () => {
+    const env = setupCallableTestEnv({
+      createUserResult: { uid: "uid-terms-null" },
+      onceByQuery: {
+        [queryKey("centers", "email_domains/uab_cat", true)]: {
+          uab: {
+            id: "uab",
+            is_active: true
+          }
+        }
+      }
+    });
+    const { secureUniversityRegistration } = require("../../lib/auth/secureUniversityRegistration");
+
+    await secureUniversityRegistration({
+      data: {
+        email: "student@uab.cat",
+        password: "secret123",
+        name: "Ada",
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    });
+
+    expect(env.writes[0].value.acceptedTermsVersion).toBeNull();
+  });
+
+  test("saves acceptedTermsVersion when provided in the registration payload", async () => {
+    const env = setupCallableTestEnv({
+      createUserResult: { uid: "uid-terms-provided" },
+      onceByQuery: {
+        [queryKey("centers", "email_domains/uab_cat", true)]: {
+          uab: {
+            id: "uab",
+            is_active: true
+          }
+        }
+      }
+    });
+    const { secureUniversityRegistration } = require("../../lib/auth/secureUniversityRegistration");
+
+    await secureUniversityRegistration({
+      data: {
+        email: "student@uab.cat",
+        password: "secret123",
+        name: "Ada",
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedTermsVersion: "2.1.3"
+      }
+    });
+
+    expect(env.writes[0].value.acceptedTermsVersion).toBe("2.1.3");
+  });
 });

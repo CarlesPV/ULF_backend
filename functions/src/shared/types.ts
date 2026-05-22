@@ -46,6 +46,7 @@ export interface RegistrationPayload {
     language?: SupportedLanguage;
     termsAccepted?: boolean;
     privacyAccepted?: boolean;
+    acceptedTermsVersion?: string;
 }
 
 export interface UserProfile {
@@ -69,6 +70,7 @@ export interface UserProfile {
         privacyAccepted: boolean;
         acceptedAt: number;
     };
+    acceptedTermsVersion?: string | null;
     created_at: number;
     updated_at: number;
     is_deleted: boolean;
