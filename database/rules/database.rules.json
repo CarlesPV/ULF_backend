@@ -79,6 +79,11 @@
                     "$other": {
                         ".validate": false
                     }
+                },
+                "acceptedTermsVersion": {
+                    ".read": "auth != null && auth.uid === $uid",
+                    ".write": "auth != null && auth.uid === $uid",
+                    ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^[0-9]+\\.[0-9]+\\.[0-9]+$/))"
                 }
             }
         },

@@ -285,4 +285,83 @@ describe("integration: Realtime Database rules", () => {
       }
     ));
   });
+
+  test("users can write and validate their acceptedTermsVersion", async () => {
+    const userUid = "user-terms-1";
+    await createVerifiedUser({
+      uid: userUid,
+      email: "terms@uab.cat"
+    });
+    await adminDb().ref(`users/${userUid}`).set({
+      id: userUid,
+      center_id: "uab",
+      role: "student",
+      email: "terms@uab.cat",
+      name: "Test User",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      is_deleted: false
+    });
+
+    const client = await signInClient(createClientApp(), "terms@uab.cat");
+
+    // 1. Write a valid semantic version to own profile (success)
+    await expect(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/acceptedTermsVersion`),
+      "1.0.3"
+    )).resolves.toBeUndefined();
+
+    // 2. Write an invalid version format to own profile (fails)
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/acceptedTermsVersion`),
+      "1.0"
+    ));
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/acceptedTermsVersion`),
+      "1.0.a"
+    ));
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/acceptedTermsVersion`),
+      ""
+    ));
+
+    // 3. Setup user B
+    const userUidB = "user-terms-2";
+    await createVerifiedUser({
+      uid: userUidB,
+      email: "termsb@uab.cat"
+    });
+    await adminDb().ref(`users/${userUidB}`).set({
+      id: userUidB,
+      center_id: "uab",
+      role: "student",
+      email: "termsb@uab.cat",
+      name: "Test User B",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
+      acceptedTermsVersion: "2.0.0",
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      is_deleted: false
+    });
+
+    // 4. Try to write to another user's acceptedTermsVersion (fails)
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUidB}/acceptedTermsVersion`),
+      "3.0.0"
+    ));
+
+    // 5. Try to read another user's acceptedTermsVersion (fails)
+    await expectPermissionDenied(firebaseDb.get(
+      firebaseDb.ref(client.database, `users/${userUidB}/acceptedTermsVersion`)
+    ));
+  });
 });
