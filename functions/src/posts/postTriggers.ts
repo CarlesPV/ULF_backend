@@ -16,7 +16,7 @@ const LOCATION_TOLERANCE_METERS = 50;
 const centersCache: Map<string, Center> = new Map();
 /**
  * Trigger de Realtime Database v2 que se activa al crearse una nueva publicación en `/posts/{postId}`.
- * 
+ *
  * Este trigger ejecuta el siguiente flujo lógico seguro y atómico:
  * 1. Validación de Integridad Geográfica (Zero Trust): Comprueba si la ubicación está dentro del geovallado del centro.
  *    Si falla, marca la publicación como "rejected" en la base de datos con el motivo de error.
@@ -25,7 +25,7 @@ const centersCache: Map<string, Center> = new Map();
  *    para posibilitar consultas de búsqueda multiidioma sin importar el idioma origen.
  * 4. Búsqueda y Alerta Automática de Coincidencias (Smart Match): Si el post está activo, analiza de manera asíncrona
  *    los posts contrarios y notifica por push a los usuarios que registraron reportes similares que superen el umbral de relevancia.
- * 
+ *
  * @param event - Evento disparado por la creación de un registro bajo `/posts/{postId}`.
  */
 export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any) => {
@@ -37,10 +37,10 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
         await validatePostLocation(post);
     } catch (error: any) {
         console.warn(`Post ${event.params.postId} rechazado por ubicación inválida.`);
-        await snapshot.ref.update({ 
-            status: "rejected", 
+        await snapshot.ref.update({
+            status: "rejected",
             rejection_reason: error.message || "out_of_bounds",
-            updated_at: admin.database.ServerValue.TIMESTAMP 
+            updated_at: admin.database.ServerValue.TIMESTAMP
         });
         return null;
     }
@@ -64,16 +64,34 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
     }
 
     // Traducción en segundo plano para habilitar compatibilidad multiidioma en búsquedas
+    const translationTasks: Promise<any>[] = [];
+
     if (post.description) {
-        tasks.push(
+        translationTasks.push(
             translateText(post.description, DEFAULT_LANGUAGE)
                 .then((translation: string) => snapshot.ref.update({
                     translated_description: translation.toLowerCase()
                 }))
                 .catch((error: any) => {
-                    console.error(`Error traduciendo el post ${event.params.postId}:`, error);
+                    console.error(`Error traduciendo descripción del post ${event.params.postId}:`, error);
                 })
         );
+    }
+
+    if (post.title) {
+        translationTasks.push(
+            translateText(post.title, DEFAULT_LANGUAGE)
+                .then((translation: string) => snapshot.ref.update({
+                    translated_title: translation.toLowerCase()
+                }))
+                .catch((error: any) => {
+                    console.error(`Error traduciendo título del post ${event.params.postId}:`, error);
+                })
+        );
+    }
+
+    if (translationTasks.length > 0) {
+        tasks.push(Promise.all(translationTasks));
     }
 
     // Ejecutar búsqueda de coincidencias y notificar a los usuarios en paralelo
@@ -91,13 +109,13 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
 
 /**
  * Trigger de Realtime Database v2 que se activa al actualizarse una publicación en `/posts/{postId}`.
- * 
+ *
  * Realiza las siguientes sincronizaciones de consistencia:
  * 1. Actualización de Índices de Feed: Si la publicación pasa a inactiva o borrada, se elimina de `/active_posts`.
  *    Si cambia de inactiva a activa, se vuelve a indexar.
  * 2. Sincronización Denormalizada: Si el autor cambia el título o la imagen del objeto, propaga estos metadatos
  *    a todas las sesiones de chat abiertas vinculadas a esta publicación para mantener la consistencia en el Feed de Chats del Frontend.
- * 
+ *
  * @param event - Evento disparado por la actualización del registro.
  */
 export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any) => {
@@ -151,7 +169,7 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
 
 /**
  * Elimina físicamente un archivo de Firebase Storage a partir de su URL pública.
- * 
+ *
  * @param url - URL pública de Firebase Storage del archivo a eliminar.
  */
 async function deleteStorageFileFromUrl(url: string): Promise<void> {
@@ -172,7 +190,7 @@ async function deleteStorageFileFromUrl(url: string): Promise<void> {
 
 /**
  * Sincroniza y propaga los metadatos de una publicación hacia todos sus chats activos asociados.
- * 
+ *
  * @param postId - Identificador único de la publicación.
  * @param title - Nuevo título a propagar.
  * @param imageUrl - Nueva URL de imagen a propagar.
@@ -198,10 +216,10 @@ async function syncPostMetadataToChats(postId: string, title: string, imageUrl: 
 
 /**
  * Trigger de Realtime Database v2 que se activa al eliminarse físicamente una publicación en `/posts/{postId}`.
- * 
+ *
  * Elimina de manera definitiva la clave del post de la ruta `/active_posts/{center_id}/{postId}` para evitar
  * la existencia de registros huérfanos que apunten a documentos eliminados físicamente.
- * 
+ *
  * @param event - Evento disparado por la eliminación del registro.
  */
 export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any) => {
@@ -228,7 +246,7 @@ export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any
 
 /**
  * Realiza una búsqueda automática de coincidencias para una publicación y notifica a los usuarios con reportes compatibles.
- * 
+ *
  * Algoritmo del Smart Matcher:
  * 1. Identifica el tipo de publicación opuesto (ej. si el nuevo post es de tipo 'found', busca publicaciones 'lost').
  * 2. Carga concurrently el detalle de todos los reportes activos del tipo opuesto en el mismo centro.
@@ -238,7 +256,7 @@ export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any
  *    - Suma `0.5` puntos por cada coincidencia de palabra clave en la descripción del post objetivo.
  *    - Filtro de Umbral: Solo conserva coincidencias con un `score >= 1.5` (misma categoría + al menos 1 coincidencia textual).
  * 5. Envía una notificación push a los autores de las 5 mejores coincidencias sugeridas informando sobre el nuevo post.
- * 
+ *
  * @param postId - Identificador único de la publicación recién registrada.
  * @param newPost - Objeto que contiene las propiedades completas del reporte.
  */
@@ -286,9 +304,9 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
             if (!snap.exists()) continue;
             const existingPost = snap.val();
 
-            if (existingPost.type === targetType && existingPost.category === newPost.category && 
+            if (existingPost.type === targetType && existingPost.category === newPost.category &&
                 existingPost.status === "active" && !existingPost.is_deleted && existingPost.user_id) {
-                
+
                 let score = 1.0;
                 const targetDesc = existingPost.translated_description || existingPost.description?.toLowerCase() || "";
 
@@ -338,10 +356,10 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
 
 /**
  * Valida de forma rigurosa si las coordenadas geográficas de un reporte pertenecen al radio de acción del centro universitario.
- * 
+ *
  * Implementa geovallado a nivel de base de datos comparando las coordenadas mediante la distancia Haversine.
  * Incluye un margen de tolerancia de 50 metros para equilibrar la precisión de punto flotante y la fidelidad del hardware GPS.
- * 
+ *
  * @param post - Objeto que contiene las coordenadas y datos geográficos del reporte a validar.
  * @throws {HttpsError}
  *   - 'invalid-argument': Si faltan datos geográficos.
@@ -372,7 +390,6 @@ async function validatePostLocation(post: any): Promise<void> {
         throw new HttpsError("internal", I18N_STRINGS.errors.center_config_error);
     }
 
-    // Validación Haversine con tolerancia flexible de 50 metros para evitar falsos rechazos debido a imprecisiones de sensor GPS
     const distance = getHaversineDistance(coords.lat, coords.lng, location.lat, location.lng);
     const maxAllowedDistance = radius_meters + LOCATION_TOLERANCE_METERS;
 
@@ -382,5 +399,3 @@ async function validatePostLocation(post: any): Promise<void> {
         throw new HttpsError("out-of-range", I18N_STRINGS.errors.out_of_bounds_location);
     }
 }
-
-
