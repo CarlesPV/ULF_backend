@@ -30,10 +30,14 @@ import { RegistrationPayload, SupportedLanguage } from "../shared/types";
  */
 export const secureUniversityRegistration = functions.https.onCall(async (request) => {
     const data = request.data as RegistrationPayload;
-    const { email, password, name, preferredLanguage, language } = data;
+    const { email, password, name, preferredLanguage, language, termsAccepted, privacyAccepted, acceptedTermsVersion } = data;
 
     if (!email || !password || !name) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
+    }
+
+    if (termsAccepted !== true || privacyAccepted !== true) {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.legal_acceptance_required);
     }
 
     // Validar de forma estricta el idioma preferido
@@ -96,6 +100,12 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
                 push_notifications: true,
                 dark_mode: false
             },
+            legal: {
+                termsAccepted: true,
+                privacyAccepted: true,
+                acceptedAt: admin.database.ServerValue.TIMESTAMP
+            },
+            acceptedTermsVersion: acceptedTermsVersion || null,
             created_at: admin.database.ServerValue.TIMESTAMP,
             updated_at: admin.database.ServerValue.TIMESTAMP,
             is_deleted: false

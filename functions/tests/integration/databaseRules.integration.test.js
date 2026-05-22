@@ -15,7 +15,7 @@ function validPost(id, userId = "owner-1") {
     center_id: "uab",
     type: "lost",
     title: "Mochila roja",
-    description: "",
+    description: "Mochila escolar de color rojo.",
     category: "bags",
     status: "active",
     coords: {
@@ -124,6 +124,11 @@ describe("integration: Realtime Database rules", () => {
       role: "student",
       email: "settings@uab.cat",
       name: "Test User",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
       created_at: Date.now(),
       updated_at: Date.now(),
       is_deleted: false
@@ -148,6 +153,215 @@ describe("integration: Realtime Database rules", () => {
     await expectPermissionDenied(firebaseDb.set(
       firebaseDb.ref(client.database, "users/other-user/preferredLanguage"),
       "es"
+    ));
+  });
+
+  test("empty strings are rejected on critical user profile fields", async () => {
+    const userUid = "user-empty-fields-1";
+    await createVerifiedUser({
+      uid: userUid,
+      email: "emptyfields@uab.cat"
+    });
+    
+    // Configuración inicial del usuario
+    await adminDb().ref(`users/${userUid}`).set({
+      id: userUid,
+      center_id: "uab",
+      role: "student",
+      email: "emptyfields@uab.cat",
+      name: "Test User",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      is_deleted: false
+    });
+
+    const client = await signInClient(createClientApp(), "emptyfields@uab.cat");
+
+    // Intentar escribir un nombre vacío
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/name`),
+      ""
+    ));
+
+    // Intentar escribir un email vacío
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/email`),
+      ""
+    ));
+
+    // Intentar escribir un id vacío
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/id`),
+      ""
+    ));
+  });
+
+  test("empty strings are rejected on critical post fields (title) but allowed on optional fields (description)", async () => {
+    await createVerifiedUser({
+      uid: "owner-1",
+      email: "owner@uab.cat"
+    });
+    const client = await signInClient(createClientApp(), "owner@uab.cat");
+
+    const postRef = firebaseDb.ref(client.database, "posts/post-empty-test");
+
+    // Intentar escribir post con título vacío
+    const invalidTitlePost = validPost("post-empty-test", "owner-1");
+    invalidTitlePost.title = "";
+    await expectPermissionDenied(firebaseDb.set(postRef, invalidTitlePost));
+
+    // Intentar escribir post con descripción vacía (debería ser aceptado porque es opcional)
+    const validDescPost = validPost("post-empty-test", "owner-1");
+    validDescPost.description = "";
+    await expect(firebaseDb.set(postRef, validDescPost)).resolves.toBeUndefined();
+  });
+
+  test("users can write and validate their legal node", async () => {
+    const userUid = "user-legal-1";
+    await createVerifiedUser({
+      uid: userUid,
+      email: "legal@uab.cat"
+    });
+    await adminDb().ref(`users/${userUid}`).set({
+      id: userUid,
+      center_id: "uab",
+      role: "student",
+      email: "legal@uab.cat",
+      name: "Test User",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      is_deleted: false
+    });
+
+    const client = await signInClient(createClientApp(), "legal@uab.cat");
+
+    // Write a valid legal node
+    await expect(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/legal`),
+      {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      }
+    )).resolves.toBeUndefined();
+
+    // Write an invalid legal node (missing acceptedAt)
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/legal`),
+      {
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    ));
+
+    // Write an invalid legal node (extra field)
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/legal`),
+      {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now(),
+        hack: "malicious"
+      }
+    ));
+
+    // Write to another user's legal node
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, "users/other-user/legal"),
+      {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      }
+    ));
+  });
+
+  test("users can write and validate their acceptedTermsVersion", async () => {
+    const userUid = "user-terms-1";
+    await createVerifiedUser({
+      uid: userUid,
+      email: "terms@uab.cat"
+    });
+    await adminDb().ref(`users/${userUid}`).set({
+      id: userUid,
+      center_id: "uab",
+      role: "student",
+      email: "terms@uab.cat",
+      name: "Test User",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      is_deleted: false
+    });
+
+    const client = await signInClient(createClientApp(), "terms@uab.cat");
+
+    // 1. Write a valid semantic version to own profile (success)
+    await expect(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/acceptedTermsVersion`),
+      "1.0.3"
+    )).resolves.toBeUndefined();
+
+    // 2. Write an invalid version format to own profile (fails)
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/acceptedTermsVersion`),
+      "1.0"
+    ));
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/acceptedTermsVersion`),
+      "1.0.a"
+    ));
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/acceptedTermsVersion`),
+      ""
+    ));
+
+    // 3. Setup user B
+    const userUidB = "user-terms-2";
+    await createVerifiedUser({
+      uid: userUidB,
+      email: "termsb@uab.cat"
+    });
+    await adminDb().ref(`users/${userUidB}`).set({
+      id: userUidB,
+      center_id: "uab",
+      role: "student",
+      email: "termsb@uab.cat",
+      name: "Test User B",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
+      acceptedTermsVersion: "2.0.0",
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      is_deleted: false
+    });
+
+    // 4. Try to write to another user's acceptedTermsVersion (fails)
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUidB}/acceptedTermsVersion`),
+      "3.0.0"
+    ));
+
+    // 5. Try to read another user's acceptedTermsVersion (fails)
+    await expectPermissionDenied(firebaseDb.get(
+      firebaseDb.ref(client.database, `users/${userUidB}/acceptedTermsVersion`)
     ));
   });
 });

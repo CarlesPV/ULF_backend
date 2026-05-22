@@ -120,13 +120,12 @@ export const createPostReport = functions.https.onCall(async (request) => {
     const newPostRef = postsRef.push();
     const postId = newPostRef.key;
 
-    const payload = {
+    const payload: any = {
         id: postId,
         user_id: uid,
         center_id: center_id,
         type: type,
         title: title,
-        description: description || "",
         category: category,
         status: "active",
         coords: {
@@ -139,6 +138,10 @@ export const createPostReport = functions.https.onCall(async (request) => {
         updated_at: admin.database.ServerValue.TIMESTAMP,
         is_deleted: false
     };
+
+    if (description && description.trim().length > 0) {
+        payload.description = description.trim();
+    }
 
     try {
         await newPostRef.set(payload);

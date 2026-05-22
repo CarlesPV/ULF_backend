@@ -19,7 +19,9 @@ describe("secureUniversityRegistration", () => {
       data: {
         email: "student@uab.cat",
         password: "secret123",
-        name: "Ada"
+        name: "Ada",
+        termsAccepted: true,
+        privacyAccepted: true
       }
     });
 
@@ -44,6 +46,11 @@ describe("secureUniversityRegistration", () => {
             pushNotificationsEnabled: true,
             push_notifications: true,
             dark_mode: false
+          },
+          legal: {
+            termsAccepted: true,
+            privacyAccepted: true,
+            acceptedAt: 1700000000000
           },
           created_at: 1700000000000,
           updated_at: 1700000000000,
@@ -90,7 +97,9 @@ describe("secureUniversityRegistration", () => {
       data: {
         email: "student@example.com",
         password: "secret123",
-        name: "Ada"
+        name: "Ada",
+        termsAccepted: true,
+        privacyAccepted: true
       }
     })).rejects.toMatchObject({ code: "permission-denied" });
 
@@ -115,7 +124,9 @@ describe("secureUniversityRegistration", () => {
       data: {
         email: "student@uab.cat",
         password: "secret123",
-        name: "Ada"
+        name: "Ada",
+        termsAccepted: true,
+        privacyAccepted: true
       }
     })).rejects.toMatchObject({ code: "unavailable" });
 
@@ -141,7 +152,9 @@ describe("secureUniversityRegistration", () => {
       data: {
         email: "student@uab.cat",
         password: "secret123",
-        name: "Ada"
+        name: "Ada",
+        termsAccepted: true,
+        privacyAccepted: true
       }
     })).rejects.toMatchObject({ code: "already-exists" });
 
@@ -173,7 +186,9 @@ describe("secureUniversityRegistration", () => {
         email: "student@uab.cat",
         password: "secret123",
         name: "Ada",
-        language: "ca"
+        language: "ca",
+        termsAccepted: true,
+        privacyAccepted: true
       }
     })).rejects.toMatchObject({ code: "internal" });
 
@@ -199,7 +214,9 @@ describe("secureUniversityRegistration", () => {
         email: "student@uab.cat",
         password: "secret123",
         name: "Ada",
-        language: "ca"
+        language: "ca",
+        termsAccepted: true,
+        privacyAccepted: true
       }
     });
 
@@ -225,7 +242,9 @@ describe("secureUniversityRegistration", () => {
         email: "student@uab.cat",
         password: "secret123",
         name: "Ada",
-        preferredLanguage: "en"
+        preferredLanguage: "en",
+        termsAccepted: true,
+        privacyAccepted: true
       }
     });
 
@@ -250,7 +269,9 @@ describe("secureUniversityRegistration", () => {
         email: "student@uab.cat",
         password: "secret123",
         name: "Ada",
-        preferredLanguage: "fr"
+        preferredLanguage: "fr",
+        termsAccepted: true,
+        privacyAccepted: true
       }
     })).rejects.toMatchObject({ code: "invalid-argument" });
   });
@@ -274,10 +295,83 @@ describe("secureUniversityRegistration", () => {
         email: "student@uab.cat",
         password: "secret123",
         name: "Ada",
-        preferredLanguage: ""
+        preferredLanguage: "",
+        termsAccepted: true,
+        privacyAccepted: true
       }
     });
 
     expect(env.writes[0].value.settings.language).toBe("es");
+  });
+
+  test("rejects when terms and privacy acceptance is missing", async () => {
+    setupCallableTestEnv();
+    const { secureUniversityRegistration } = require("../../lib/auth/secureUniversityRegistration");
+
+    await expect(secureUniversityRegistration({
+      data: {
+        email: "student@uab.cat",
+        password: "secret123",
+        name: "Ada"
+      }
+    })).rejects.toMatchObject({
+      code: "invalid-argument",
+      message: "error_legal_acceptance_required"
+    });
+  });
+
+  test("sets acceptedTermsVersion to null by default if not provided", async () => {
+    const env = setupCallableTestEnv({
+      createUserResult: { uid: "uid-terms-null" },
+      onceByQuery: {
+        [queryKey("centers", "email_domains/uab_cat", true)]: {
+          uab: {
+            id: "uab",
+            is_active: true
+          }
+        }
+      }
+    });
+    const { secureUniversityRegistration } = require("../../lib/auth/secureUniversityRegistration");
+
+    await secureUniversityRegistration({
+      data: {
+        email: "student@uab.cat",
+        password: "secret123",
+        name: "Ada",
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    });
+
+    expect(env.writes[0].value.acceptedTermsVersion).toBeNull();
+  });
+
+  test("saves acceptedTermsVersion when provided in the registration payload", async () => {
+    const env = setupCallableTestEnv({
+      createUserResult: { uid: "uid-terms-provided" },
+      onceByQuery: {
+        [queryKey("centers", "email_domains/uab_cat", true)]: {
+          uab: {
+            id: "uab",
+            is_active: true
+          }
+        }
+      }
+    });
+    const { secureUniversityRegistration } = require("../../lib/auth/secureUniversityRegistration");
+
+    await secureUniversityRegistration({
+      data: {
+        email: "student@uab.cat",
+        password: "secret123",
+        name: "Ada",
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedTermsVersion: "2.1.3"
+      }
+    });
+
+    expect(env.writes[0].value.acceptedTermsVersion).toBe("2.1.3");
   });
 });
