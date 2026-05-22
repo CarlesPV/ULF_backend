@@ -160,10 +160,15 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
     const newlyDeleted = after.is_deleted === true && (!before || before.is_deleted !== true);
     const newlyResolved = (after.status === "returned" || after.status === "resolved") && (!before || (before.status !== "returned" && before.status !== "resolved"));
 
+    const wasDisabled = before?.is_deleted === true || before?.status === "returned" || before?.status === "resolved";
+    const isNowActive = after.is_deleted === false && (after.status === "active" || after.status === "matched");
+
     if (newlyDeleted) {
         tasks.push(disableChatsForPost(event.params.postId, "deleted"));
     } else if (newlyResolved) {
         tasks.push(disableChatsForPost(event.params.postId, "resolved"));
+    } else if (wasDisabled && isNowActive) {
+        tasks.push(enableChatsForPost(event.params.postId));
     }
 
     // Gestión de archivos huérfanos: Si la URL de imagen ha cambiado, eliminamos la anterior física de Storage
@@ -244,6 +249,30 @@ async function disableChatsForPost(postId: string, reason: "deleted" | "resolved
         const chatId = chatSnapshot.key;
         updates[`chats/${chatId}/isActive`] = false;
         updates[`chats/${chatId}/disabledReason`] = reason;
+    });
+
+    await admin.database().ref().update(updates);
+}
+
+/**
+ * Habilita todos los chats asociados a una publicación.
+ *
+ * @param postId - Identificador único de la publicación.
+ */
+async function enableChatsForPost(postId: string): Promise<void> {
+    const chatsQuery = await admin.database()
+        .ref("chats")
+        .orderByChild("post_id")
+        .equalTo(postId)
+        .once("value");
+
+    if (!chatsQuery.exists()) return;
+
+    const updates: { [key: string]: any } = {};
+    chatsQuery.forEach((chatSnapshot) => {
+        const chatId = chatSnapshot.key;
+        updates[`chats/${chatId}/isActive`] = true;
+        updates[`chats/${chatId}/disabledReason`] = null;
     });
 
     await admin.database().ref().update(updates);
