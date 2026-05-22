@@ -130,7 +130,10 @@ describe("integration: feed and matching", () => {
     const result = await callFunction(client, "checkPotentialMatches", {
       center_id: "uab",
       type: "found",
-      category: "keys"
+      category: "keys",
+      title: "Llaves encontradas",
+      description: "llavero rojo",
+      created_at: 4000
     });
 
     expect(result.data.matches).toEqual([

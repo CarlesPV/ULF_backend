@@ -27,6 +27,9 @@ export const DEFAULT_LANGUAGE: SupportedLanguage = "es";
  */
 export async function translateText(text: string, target: SupportedLanguage): Promise<string> {
     if (!text || text.trim() === "") return text;
+    if (process.env.FUNCTIONS_EMULATOR === "true") {
+        return text;
+    }
     const [translation] = await translateClient.translate(text, target);
     return translation;
 }

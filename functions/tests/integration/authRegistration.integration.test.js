@@ -26,7 +26,9 @@ describe("integration: university registration", () => {
     const result = await callFunction(client, "secureUniversityRegistration", {
       email: "ada@uab.cat",
       password: "secret123",
-      name: "Ada"
+      name: "Ada",
+      termsAccepted: true,
+      privacyAccepted: true
     });
 
     expect(result.data).toEqual({
@@ -44,8 +46,33 @@ describe("integration: university registration", () => {
       role: "student",
       email: "ada@uab.cat",
       name: "Ada",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: expect.any(Number)
+      },
       is_deleted: false
     }));
+  });
+
+  test("registration without legal acceptance is rejected", async () => {
+    const client = createClientApp();
+
+    await expectFunctionError(callFunction(client, "secureUniversityRegistration", {
+      email: "ada@uab.cat",
+      password: "secret123",
+      name: "Ada",
+      termsAccepted: false,
+      privacyAccepted: true
+    }), "invalid-argument");
+
+    await expectFunctionError(callFunction(client, "secureUniversityRegistration", {
+      email: "ada@uab.cat",
+      password: "secret123",
+      name: "Ada",
+      termsAccepted: true,
+      privacyAccepted: false
+    }), "invalid-argument");
   });
 
   test("unregistered domains are rejected", async () => {
@@ -54,7 +81,9 @@ describe("integration: university registration", () => {
     await expectFunctionError(callFunction(client, "secureUniversityRegistration", {
       email: "ada@example.com",
       password: "secret123",
-      name: "Ada"
+      name: "Ada",
+      termsAccepted: true,
+      privacyAccepted: true
     }), "permission-denied");
   });
 
@@ -70,7 +99,9 @@ describe("integration: university registration", () => {
     await expectFunctionError(callFunction(client, "secureUniversityRegistration", {
       email: "ada@uab.cat",
       password: "secret123",
-      name: "Ada"
+      name: "Ada",
+      termsAccepted: true,
+      privacyAccepted: true
     }), "already-exists");
   });
 });

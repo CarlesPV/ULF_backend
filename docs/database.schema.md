@@ -53,6 +53,7 @@ Gestiona los perfiles de los usuarios de la plataforma.
 | `photo_path` | `string` | Ruta interna en Firebase Storage (ej. `users/{uid}/profile_image.webp`). |
 | `photoUrl` | `string` | URL pública de la foto de perfil (generada tras optimización). |
 | `settings` | `object` | Configuración: `language` ("es"|"en"|"ca"), `push_notifications` (boolean) y `dark_mode` (boolean). |
+| `legal` | `object` | Aceptación de términos legales: `termsAccepted` (boolean), `privacyAccepted` (boolean) y `acceptedAt` (number). |
 | `created_at` | `number` | Unix timestamp en milisegundos de la creación de la cuenta. |
 | `updated_at` | `number` | Unix timestamp en milisegundos de la última modificación. |
 | `is_deleted` | `boolean` | Bandera para borrado lógico. |
@@ -69,6 +70,7 @@ Gestiona los perfiles de los usuarios de la plataforma.
     "photo_path": "users/uid_abc123/profile_image.webp",
     "photoUrl": "https://storage.googleapis.com/...",
     "settings": { "language": "es", "push_notifications": true, "dark_mode": false },
+    "legal": { "termsAccepted": true, "privacyAccepted": true, "acceptedAt": 1705320000000 },
     "created_at": 1705320000000,
     "updated_at": 1705320000000,
     "is_deleted": false

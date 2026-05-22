@@ -160,8 +160,13 @@ async function handlePostImage(event: any) {
             image: { content: fs.readFileSync(tempFilePath) }
         };
 
-        const visionResponse = await visionClient.labelDetection(imageRequest);
-        const labels = visionResponse[0]?.labelAnnotations || [];
+        let labels = [];
+        if (process.env.FUNCTIONS_EMULATOR === "true") {
+            labels = [{ description: "mock label" }];
+        } else {
+            const visionResponse = await visionClient.labelDetection(imageRequest);
+            labels = visionResponse[0]?.labelAnnotations || [];
+        }
         let translatedLabels: string[] = [];
 
         if (labels.length > 0) {

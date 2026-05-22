@@ -124,6 +124,11 @@ describe("integration: Realtime Database rules", () => {
       role: "student",
       email: "settings@uab.cat",
       name: "Test User",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
       created_at: Date.now(),
       updated_at: Date.now(),
       is_deleted: false
@@ -165,6 +170,11 @@ describe("integration: Realtime Database rules", () => {
       role: "student",
       email: "emptyfields@uab.cat",
       name: "Test User",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
       created_at: Date.now(),
       updated_at: Date.now(),
       is_deleted: false
@@ -209,5 +219,70 @@ describe("integration: Realtime Database rules", () => {
     const validDescPost = validPost("post-empty-test", "owner-1");
     validDescPost.description = "";
     await expect(firebaseDb.set(postRef, validDescPost)).resolves.toBeUndefined();
+  });
+
+  test("users can write and validate their legal node", async () => {
+    const userUid = "user-legal-1";
+    await createVerifiedUser({
+      uid: userUid,
+      email: "legal@uab.cat"
+    });
+    await adminDb().ref(`users/${userUid}`).set({
+      id: userUid,
+      center_id: "uab",
+      role: "student",
+      email: "legal@uab.cat",
+      name: "Test User",
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      },
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      is_deleted: false
+    });
+
+    const client = await signInClient(createClientApp(), "legal@uab.cat");
+
+    // Write a valid legal node
+    await expect(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/legal`),
+      {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      }
+    )).resolves.toBeUndefined();
+
+    // Write an invalid legal node (missing acceptedAt)
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/legal`),
+      {
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    ));
+
+    // Write an invalid legal node (extra field)
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, `users/${userUid}/legal`),
+      {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now(),
+        hack: "malicious"
+      }
+    ));
+
+    // Write to another user's legal node
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, "users/other-user/legal"),
+      {
+        termsAccepted: true,
+        privacyAccepted: true,
+        acceptedAt: Date.now()
+      }
+    ));
   });
 });
