@@ -48,7 +48,7 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
     const tasks: Promise<any>[] = [];
 
     // Indexar el post bajo la lista de posts activos del centro
-    if (post.status === "active" && post.is_deleted === false) {
+    if ((post.status === "active" || post.status === "matched") && post.is_deleted === false) {
         tasks.push(
             admin.database()
                 .ref(`active_posts/${post.center_id}/${event.params.postId}`)
@@ -128,7 +128,7 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
     // Mantener el índice de publicaciones activas sincronizado para el feed de búsqueda
     const indexRef = admin.database().ref(`active_posts/${after.center_id}/${event.params.postId}`);
     const typeIndexRef = admin.database().ref(`active_posts/${after.center_id}/${after.type}/${event.params.postId}`);
-    const isActive = after.status === "active" && after.is_deleted === false;
+    const isActive = (after.status === "active" || after.status === "matched") && after.is_deleted === false;
 
     if (isActive) {
         tasks.push(indexRef.set(after.created_at));

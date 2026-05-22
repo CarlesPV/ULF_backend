@@ -88,7 +88,6 @@
             }
         },
         "posts": {
-            ".read": "auth != null && auth.token.email_verified === true",
             ".indexOn": [
                 "center_id",
                 "type",
@@ -99,6 +98,7 @@
                 "coords/geohash"
             ],
             "$post_id": {
+                ".read": "auth != null && auth.token.email_verified === true && (data.child('status').val() === 'active' || data.child('status').val() === 'matched' || data.child('user_id').val() === auth.uid)",
                 ".write": "auth != null && auth.token.email_verified === true && (!data.exists() || data.child('user_id').val() === auth.uid)",
                 ".validate": "newData.hasChildren(['id', 'user_id', 'center_id', 'type', 'title', 'category', 'status', 'coords', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $post_id && newData.child('coords').hasChildren(['lat', 'lng', 'geohash']) && newData.child('coords/lat').isNumber() && newData.child('coords/lng').isNumber() && newData.child('updated_at').val() === now && (!newData.child('imageUrl').exists() || newData.child('imageUrl').isString())",
                 "user_id": {

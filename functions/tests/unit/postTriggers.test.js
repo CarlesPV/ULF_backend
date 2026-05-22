@@ -107,7 +107,7 @@ describe("post triggers", () => {
     await onPostCreated(createdEvent({
       center_id: "uab",
       coords: validCoords,
-      status: "matched",
+      status: "returned",
       is_deleted: false,
       created_at: 123
     }));

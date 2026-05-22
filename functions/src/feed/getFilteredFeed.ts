@@ -86,6 +86,7 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         const post = snap.val();
 
         if (post.type !== type) continue;
+        if (post.status !== "active" && post.status !== "matched") continue;
         if (category && post.category !== category) continue;
 
         if (searchWords.length > 0) {
