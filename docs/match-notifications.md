@@ -1,297 +1,90 @@
-# Sistema de Notificaciones para Matches
+# Sistema de notificaciones de matches
 
-**Fecha:** Mayo 2026  
-**Estado:** ✅ Implementado  
-**Prioridad:** Alta (RF06 - Matcher con Notificaciones)
+Revision: 22 de mayo de 2026.
 
-## Descripción General
+El backend envia notificaciones de coincidencias cuando se crea un post nuevo y el trigger `onPostCreated` encuentra posts activos compatibles. La callable `checkPotentialMatches` solo devuelve sugerencias al cliente; no dispara notificaciones en el codigo actual.
 
-El sistema de notificaciones de matches asegura que cuando se detecta una potencial coincidencia entre un objeto perdido y uno encontrado, **los usuarios relevantes son notificados automáticamente en tiempo real** mediante Firebase Cloud Messaging (FCM).
+## Flujo automatico
 
-## Flujos de Notificación
-
-### Flujo 1: Búsqueda Manual (checkPotentialMatches)
-
-```
-Usuario A (buscando "Llavero rojo")
-           ↓
-Llama: checkPotentialMatches({
-    center_id: "uab",
-    type: "lost",
-    category: "keys",
-    color: "rojo",
-    description: "llavero con cinta"
-})
-           ↓
-Sistema busca matches activos (type="found")
-           ↓
-Encuentra 3 matches con scores 2.0, 1.5, 1.0
-           ↓
-Para cada match (async, sin bloquear):
-  - Obtiene user_id del post
-  - Obtiene tokens FCM del usuario
-  - Envía notificación push
-           ↓
-Retorna al cliente: { matches: [...] }
+```text
+Usuario publica un post en /posts/{postId}
+    -> onPostCreated valida geovallado
+    -> indexa en /active_posts/{center_id} y /active_posts/{center_id}/{type}
+    -> traduce titulo/descripcion
+    -> notifyMatchesForNewPost busca posts del tipo opuesto
+    -> notifyMultipleUsersOfMatch envia FCM y guarda notificacion in-app
 ```
 
-**Ejemplo de Notificación Recibida:**
+## Componentes
+
+| Archivo | Responsabilidad |
+| :--- | :--- |
+| `functions/src/posts/postTriggers.ts` | Busca matches automaticos en `notifyMatchesForNewPost`. |
+| `functions/src/shared/notifications.ts` | Construye payloads, respeta preferencias, envia FCM, guarda in-app y limpia tokens invalidos. |
+| `functions/src/notifications/saveFcmToken.ts` | Registra tokens en `/users/{uid}/fcm_tokens/{token}`. |
+| `functions/src/notifications/markNotificationsRead.ts` | Marca una, varias o todas las notificaciones como leidas. |
+| `functions/src/shared/i18n.ts` | Textos localizados de notificacion. |
+
+## Datos usados
+
+Tokens FCM:
+
 ```json
 {
-  "notification": {
-    "title": "¡Coincidencia encontrada!",
-    "body": "Se encontró un objeto que podría coincidir: 'Llavero rojo con cinta'"
-  },
+  "users": {
+    "uid_123": {
+      "fcm_tokens": {
+        "token_1": true
+      },
+      "settings": {
+        "pushNotificationsEnabled": true
+      }
+    }
+  }
+}
+```
+
+Notificacion in-app:
+
+```json
+{
+  "id": "notif_123",
+  "type": "match_found",
+  "title": "Coincidencia encontrada",
+  "body": "Se encontro un objeto que podria coincidir con tu busqueda.",
+  "read": false,
+  "timestamp": 1715731200000,
   "data": {
-    "type": "match_found",
-    "matchPostId": "post_xyz789",
-    "matchTitle": "Llavero encontrado en biblioteca",
-    "matchScore": "2.0",
+    "type": "match",
+    "postId": "post_123",
+    "matchPostId": "post_123",
+    "matchTitle": "Llavero rojo",
+    "matchScore": 1.5,
     "matchPhotoUrl": "https://...",
-    "timestamp": "1715731200000"
+    "timestamp": 1715731200000
   }
 }
 ```
 
-### Flujo 2: Auto-Detección (onPostCreated Trigger)
+## Preferencias y entrega
 
-```
-Usuario B publica: "Encontré un llavero rojo"
-           ↓
-Trigger: onPostCreated se ejecuta
-           ↓
-Paralelamente:
-  A) Indexar en /active_posts/{center_id}
-  B) Traducir descripción
-  C) Buscar matches automáticamente
-           ↓
-notifyMatchesForNewPost() busca:
-  - Posts activos con type="lost"
-  - Misma categoría
-  - Similitud de descripción
-           ↓
-Top 5 matches encontrados
-           ↓
-Para cada usuario que tiene un match:
-  - Obtiene tokens FCM
-  - Envía notificación
-           ↓
-Trigger completa (sin bloquear el flujo)
-```
+- `sendNotificationToUser` no envia push si `/users/{uid}/settings/pushNotificationsEnabled` es `false`.
+- Si no hay tokens FCM, la funcion devuelve `false` sin romper el flujo.
+- Tokens con `messaging/invalid-registration-token` o `messaging/registration-token-not-registered` se eliminan automaticamente.
+- La notificacion in-app se intenta guardar antes del envio push.
 
-## Estructura de Código
+## Diferencia con `checkPotentialMatches`
 
-### 1. Utilidad de Notificaciones (`shared/notifications.ts`)
+`checkPotentialMatches` se usa para que el cliente muestre sugerencias antes de publicar. No llama a `notifyMatchFound` y no acepta `notifyMatches`.
 
-**Funciones Principales:**
-
-```typescript
-// Envía notificación a un usuario (todos sus dispositivos)
-async function sendNotificationToUser(
-    userId: string,
-    payload: NotificationPayload
-): Promise<boolean>
-
-// Notifica sobre un match específico
-async function notifyMatchFound(
-    userId: string,
-    matchPost: { id, title, description, photo_url },
-    matchScore: number
-): Promise<boolean>
-
-// Notifica a múltiples usuarios en paralelo
-async function notifyMultipleUsersOfMatch(
-    userIds: string[],
-    matchPost: {...},
-    matchScore: number
-): Promise<{ success: number, failed: number }>
-```
-
-**Características:**
-
-- ✅ Envío a múltiples tokens FCM del mismo usuario (múltiples dispositivos)
-- ✅ Eliminación automática de tokens inválidos
-- ✅ Manejo de errores sin interrumpir el flujo
-- ✅ Logging detallado para debugging
-- ✅ Payloads multiidioma (i18n)
-
-### 2. Actualización de checkPotentialMatches
-
-**Cambios:**
-
-```typescript
-// Nuevo parámetro (opcional, default: true)
-const { notifyMatches = true } = request.data;
-
-// Después de encontrar matches:
-if (notifyMatches && topMatches.length > 0) {
-    // Enviar notificaciones en paralelo (no bloquea)
-    Promise.all(notificationPromises).catch(...)
-}
-```
-
-**Ventajas:**
-
-- El cliente puede opcionalmente desactivar notificaciones (`notifyMatches: false`)
-- Las notificaciones se envían sin bloquear la respuesta al cliente
-- Manejo robusto de errores
-
-### 3. Trigger en postTriggers.ts
-
-**Nueva Función:**
-```typescript
-async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<void>
-```
-
-**Algoritmo:**
-
-1. Validar que el post sea activo
-2. Buscar posts activos del tipo opuesto
-3. Obtener descripción traducida para mejor matching
-4. Calcular scores de relevancia
-5. Notificar a top 5 usuarios
-6. Loguear resultados
-
-**Ejecución:**
-- Corre en paralelo dentro de `onPostCreated`
-- No bloquea indexing ni traducción
-- Errores son capturados y logueados
-
-## Estructura de Base de Datos
-
-### Tokens FCM
-
-```
-/users/{userId}/fcm_tokens/
-  {token_1}: true
-  {token_2}: true
-  {token_3}: true
-```
-
-**Gestión:**
-
-- Cliente: Registra tokens con `saveFcmToken()` callable
-- Servidor: Lee tokens para enviar notificaciones
-- Auto-limpieza: Elimina tokens inválidos automáticamente
-
-### Registros de Notificaciones (Opcional)
-
-```
-/notifications/{userId}/{notificationId}/
-  type: "match_found"
-  matchPostId: "post_xyz"
-  createdAt: 1715731200000
-  read: false
-```
-
-## Internacionalización (i18n)
-
-Claves de notificación en `shared/i18n.ts`:
-
-```typescript
-notifications: {
-  match_found_title: {
-    es: "¡Coincidencia encontrada!",
-    en: "Match found!",
-    ca: "¡Coincidència trobada!"
-  },
-  match_found_body: {
-    es: "Se encontró un objeto que podría coincidir con tu búsqueda.",
-    en: "An item was found that might match your search.",
-    ca: "Es va trobar un objecte que podria coincidir amb la teva recerca."
-  }
-}
-```
-
-## Garantías y Confiabilidad
-
-| Aspecto | Implementación |
-| :--- | :--- |
-| **Entrega** | Firebase Cloud Messaging garantiza entrega con reintentos automáticos |
-| **Duplicados** | Sistema evita notificaciones duplicadas (una por top-5 match) |
-| **Ordering** | Notificaciones ordenadas por relevancia (score descendente) |
-| **Timeout** | Notificaciones no bloquean el flujo principal |
-| **Fallback** | Usuarios pueden consultar matches con `checkPotentialMatches` manualmente |
-
-## Casos de Error
-
-### 1. Usuario sin tokens FCM
-
-```javascript
-// Sistema retorna false pero no error
-const success = await notifyMatchFound(userId, match, score);
-// success === false → Usuario aún puede buscar manualmente
-```
-
-### 2. Token FCM inválido
-
-```
-- Firebase retorna: messaging/invalid-registration-token
-- Sistema automáticamente elimina el token
-- Siguiente notificación usa tokens válidos
-```
-
-### 3. Fallo en búsqueda de matches
-
-```
-try {
-    await notifyMatchesForNewPost(postId, post);
-} catch (error) {
-    console.error("Error en búsqueda de matches:", error);
-    // Post se indexa de todas formas
-    // Usuario puede buscar manualmente
-}
-```
+El flujo de notificacion real depende de que exista un post nuevo en RTDB y se active `onPostCreated`.
 
 ## Testing
 
-Ver: [matchNotifications.test.js](../functions/tests/unit/matchNotifications.test.js)
+Tests relevantes:
 
-**Casos Cubiertos:**
-
-1. ✅ Envío a múltiples dispositivos
-2. ✅ Eliminación de tokens inválidos
-3. ✅ Información correcta en payload
-4. ✅ Multiidioma en notificaciones
-5. ✅ Parallelización sin bloqueos
-
-## Flujos Completos (E2E)
-
-### Escenario 1: Búsqueda Activa
-
-```
-Timeline:
-T0:00 - Usuario A busca "Llavero rojo"
-T0:01 - Sistema encuentra 3 matches
-T0:02 - Notificaciones enviadas a usuarios B, C, D
-T0:05 - Usuario D recibe notificación en su móvil
-T0:10 - Usuario D abre la app y ve el post coincidencia
-T0:15 - Usuario D inicia chat con Usuario A
-```
-
-### Escenario 2: Publicación Automática
-
-```
-Timeline:
-T0:00 - Usuario B publica "Encontré llavero en biblioteca"
-T0:01 - Trigger indexa el post
-T0:02 - Trigger traduce descripción
-T0:03 - Trigger busca matches → encuentra 5 posts de "Perdido"
-T0:05 - Usuarios A, E, F, G, H reciben notificaciones
-T0:15 - Usuarios empiezan a abrir sus apps
-```
-
-## Métricas a Monitorear
-
-- **Latencia:** Tiempo desde match encontrado hasta notificación enviada
-- **Tasa de entrega:** % de notificaciones que llegan al dispositivo
-- **Engagement:** % de usuarios que abren notificación
-- **Conversión:** % que resulta en chat iniciado
-
-## Próximas Mejoras
-
-1. **Historial de Notificaciones:** Guardar notificaciones leídas en BD
-2. **Preferencias de Usuario:** Permitir desactivar notificaciones por categoría
-3. **Geolocalización:** Priorizar matches cercanos
-4. **Machine Learning:** Mejorar scoring basado en usuario-to-user matches históricos
-5. **Batching:** Agrupar múltiples matches en una notificación si es apropiado
+- `functions/tests/unit/matchNotifications.test.js`
+- `functions/tests/unit/postTriggers.test.js`
+- `functions/tests/unit/saveFcmToken.test.js`
+- `functions/tests/unit/markNotificationsRead.test.js`
+- `functions/tests/unit/onMessageCreated.test.js`

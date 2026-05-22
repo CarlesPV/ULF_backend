@@ -1,60 +1,81 @@
-# Arquitectura: Algoritmo Matcher (RF06)
+# Matcher de coincidencias
 
-## 1. Descripción General
-El algoritmo Matcher es el motor de inferencia de ULF. Su objetivo (RF06) es buscar coincidencias activas en la base de datos antes de permitir a un usuario publicar un "Objeto Encontrado", evitando duplicados y facilitando emparejamientos inmediatos.
+`checkPotentialMatches` busca posibles coincidencias entre posts `lost` y `found` activos antes de que el cliente publique definitivamente.
 
-Actualmente se encuentra en su **Fase 1 (In-Memory Scoring)** ejecutándose como una Callable Cloud Function.
+## Flujo
 
-La implementación actual ya evita leer todos los posts del centro: primero consulta el índice secundario `/active_posts/{center_id}` y después recupera en paralelo solo los posts que siguen vigentes.
+1. Valida usuario autenticado con email verificado.
+2. Requiere `center_id`, `category` y `type`.
+3. Calcula el tipo opuesto: si llega `found`, busca `lost`; si llega `lost`, busca `found`.
+4. Lee IDs desde `/active_posts/{center_id}/{targetType}`.
+5. Recupera posts en paralelo.
+6. Traduce `title` y `description` del post origen al idioma base (`es`) cuando existen.
+7. Tokeniza texto ignorando palabras cortas y stop words.
+8. Filtra candidatos por tipo opuesto, misma categoria y no borrados.
+9. Calcula score y devuelve hasta 5 resultados ordenados.
 
-## 2. Flujo de Ejecución (Client-to-Serverless)
+## Payload
 
-1. El usuario en Flutter rellena el formulario de "He encontrado un objeto".
-2. Antes de guardar en Realtime Database, Flutter llama a la función `checkPotentialMatches`.
-3. El servidor extrae `center_id`, `category`, `type` y opcionalmente `color` y `description`.
-4. El servidor lee las claves de `/active_posts/{center_id}` para no descargar posts resueltos, devueltos o borrados lógicamente.
-5. Se ejecuta el motor de *Scoring* en memoria.
-6. Retorna al cliente un array con los 5 mejores resultados (ID, Título, Foto y Score).
+| Campo | Tipo | Requerido | Descripcion |
+| :--- | :--- | :--- | :--- |
+| `center_id` | `string` | Si | Centro. |
+| `category` | `string` | Si | Categoria exacta. |
+| `type` | `lost` o `found` | Si | Tipo del post origen. |
+| `title` | `string` | No | Mejora coincidencia por titulo. |
+| `description` | `string` | No | Mejora coincidencia por descripcion. |
+| `location` | `string` | No | Aceptado por el payload; no aporta puntuacion directa en la version actual. |
+| `postImageUrl` / `imageUrl` / `photo_url` | `string` | No | Activa bonus si ambos posts tienen imagen. |
+| `created_at` | `number` | No | Usado para proximidad temporal. |
 
-## 3. Modelo de Scoring (Puntuación)
+No existe parametro `notifyMatches` en el codigo actual y esta callable no envia notificaciones. Las notificaciones automaticas de matches se hacen en `onPostCreated`.
 
-El algoritmo asigna un valor de relevancia (`score`) basado en inferencias exactas y semánticas:
+## Scoring
 
-* **Inferencia Base (+1.0):** El objeto tiene el estado `active`, pertenece al mismo `center_id`, el tipo es el opuesto (si busco 'found', filtro por 'lost') y la `category` coincide exactamente.
-* **Inferencia por palabras (+0.5 por coincidencia):** Si el frontend envía `color` o `description`, el algoritmo traduce esos términos al idioma común de búsqueda y compara palabras relevantes contra `translated_description` o `description`.
+Constantes actuales:
 
-## 4. Estructura de la API (Cloud Function)
+| Componente | Maximo |
+| :--- | :--- |
+| Titulo | `1.0` |
+| Descripcion | `0.5` |
+| Imagen | `0.25` |
+| Fecha | `0.2` |
+| Umbral minimo | `0.5` |
 
-**Llamada desde Flutter:**
+El score combina:
+
+- ratio de tokens de titulo encontrados en `translated_title` o `title`;
+- ratio de tokens de descripcion encontrados en `translated_description` o `description`;
+- bonus si origen y candidato tienen imagen;
+- decaimiento exponencial por diferencia de dias.
+
+## Ejemplo
+
 ```dart
 final callable = FirebaseFunctions.instance.httpsCallable('checkPotentialMatches');
 final result = await callable.call({
   'center_id': 'uab',
   'type': 'found',
   'category': 'keys',
-  'color': 'rojo', // Opcional
-  'description': 'llavero con cinta' // Opcional
+  'title': 'Llavero rojo',
+  'description': 'llavero con cinta',
+  'postImageUrl': 'pending',
+  'created_at': DateTime.now().millisecondsSinceEpoch,
 });
 ```
 
-### Respuesta del Servidor:
+Respuesta:
 
 ```json
 {
   "matches": [
     {
       "id": "post_xyz789",
-      "title": "Llavero rojo con cinta",
-      "score": 1.5,
-      "photo_path": "posts/uab/post_xyz789/foto.jpg"
+      "title": "Llavero rojo perdido",
+      "description": "Perdido cerca de biblioteca",
+      "score": 1.2,
+      "photo_path": "posts/post_xyz789/foto.webp",
+      "postImageUrl": "https://..."
     }
   ]
 }
 ```
-
-## Estado de Calidad
-
-La optimización mediante el escaneo del índice secundario `/active_posts` está plenamente implementada. Se han diseñado y validado con éxito las pruebas automatizadas en `/functions/tests/unit/checkPotentialMatches.test.js` utilizando Jest. Los tests cubren exhaustivamente:
-1. **Coincidencia Exacta:** Validación del incremento de puntuación base (+1.0) ante categoría coincidente y tipo opuesto.
-2. **Coincidencia Semántica por Palabra Traducida:** Incremento dinámico de score (+0.5 por término coincidente) comparando palabras clave del formulario de reporte contra la descripción traducida en español (`translated_description`).
-3. **Respuesta Vacía:** Comprobación del correcto descarte semántico y geográfico de candidatos incompatibles o inactivos.

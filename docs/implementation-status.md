@@ -1,36 +1,35 @@
-# Estado de Implementación Backend
+# Estado de implementacion backend
 
-Fecha de revisión: 17 de mayo de 2026.
+Fecha de revision: 22 de mayo de 2026.
 
-## Estado Real
-| Área | Estado | Evidencia |
+## Estado actual
+
+| Area | Estado | Evidencia |
 | :--- | :--- | :--- |
-| Reglas RTDB | Implementado | `database/rules/database.rules.json` protege nodos y valida enums/tipos de `/posts`. |
-| Optimización Imágenes | Implementado | Conversión automática a WebP (1080x1080) para posts y (512x512) para perfiles con política de caché pública de 1 hora. |
-| Metadatos de Chat | Implementado | Los chats incluyen caché de título e imagen del post (`postTitle`, `postImageUrl`), sincronizados automáticamente. |
-| RF13 Gestión de estados | Implementado | `updatePostStatus` valida estados y limpia índices. |
-| Matcher optimizado | Implementado | `checkPotentialMatches` usa `/active_posts/{center_id}` y recupera posts activos en paralelo. |
-| **Notificaciones de Matches** | **Implementado** | **Nueva utilidad `shared/notifications.ts` + triggers en `postTriggers.ts` y `checkPotentialMatches`** |
-| Tests automatizados | Implementado | Suite unitaria con Jest en `functions/tests/unit/` (16 suites, 105 tests) y suite de integración en `functions/tests/integration/` con Firebase Emulator Suite (5 suites, 11 tests). |
-| Internacionalización | Implementado | Traducción automática de posts y labels de Vision API al idioma base común (`es`); constantes i18n para notificaciones localizadas (`es`, `en`, `ca`). |
-| Validación de Geovallado | Implementado | Validación server-side con la fórmula de Haversine y una tolerancia de 50 metros en `validatePostLocation`. |
+| Registro seguro | Implementado | `secureUniversityRegistration` valida dominio, centro activo, aceptacion legal e inserta perfil con rollback en Auth. |
+| Reglas RTDB | Implementado | `database/rules/database.rules.json` protege centros, usuarios, posts, chats, mensajes, notificaciones y vistas. |
+| Reglas Storage | Implementado | `storage/rules/storage.rules` cubre posts, perfiles, `profile_image.webp` y chat images con limite de 5 MB. |
+| Feed filtrado | Implementado | `getFilteredFeed` usa `/active_posts/{center_id}/{type}`, filtros en memoria, traduccion de busqueda y orden por fecha/distancia. |
+| Matcher | Implementado | `checkPotentialMatches` usa scoring por titulo, descripcion, imagen y fecha sobre posts activos del tipo opuesto. |
+| Notificaciones FCM e in-app | Implementado | `shared/notifications.ts`, `saveFcmToken`, `markNotificationsRead`, `onMessageCreated` y notificaciones automaticas desde `onPostCreated`. |
+| Chats | Implementado | `getOrCreateChat` crea/reutiliza chats y `onMessageCreated` actualiza metadatos e indices. |
+| Perfil | Implementado | `onUserProfileUpdated` propaga `name` y `photoUrl` a chats; triggers de Storage sincronizan URLs de perfil. |
+| Imagenes de posts | Implementado parcial | El cliente sube WebP; `onImageUploaded` extrae `vision_labels` para posts. No hay conversion backend de posts a WebP en el codigo actual. |
+| Internacionalizacion backend | Implementado | `shared/i18n.ts` y `shared/translate.ts` soportan `es`, `en`, `ca`; `es` es idioma base. |
+| Geovallado backend | Implementado | `createPostReport` y `onPostCreated` validan distancia Haversine contra `location` + `radius_meters` + 50 m. |
+| Mantenimiento | Implementado | `purgeUnverifiedAccounts` y `backfillTermsVersion`. |
+| Tests automatizados | Implementado | 18 suites unitarias / 137 casos declarados y 6 suites de integracion / 21 casos declarados. |
 
-## Logros Recientes (Mayo 2026)
-1. **Optimización de Storage:** Implementación de `sharp` para reducir el peso de las imágenes convirtiéndolas a WebP y aplicando cabeceras `Cache-Control` óptimas.
-2. **Sincronización de Chats:** Los cambios en el nombre y foto de perfil del usuario se propagan automáticamente de forma atómica a todos sus chats activos.
-3. **Internacionalización:** Soporte completo para traducciones automáticas en el backend a través de Google Cloud Translation API y diccionarios centralizados.
-4. **Notificaciones de Matches:** Sistema completo de notificaciones FCM para alertar usuarios en tiempo real cuando se encuentran coincidencias de objetos, con auto-limpieza de tokens inactivos.
-5. **Geovallado Seguro:** Robustez geográfica mediante la fórmula matemática de Haversine con tolerancia flexible frente a derivas del GPS.
-6. **Tests de Integración:** Validación de flujos críticos con Firebase Emulator Suite para Auth, Realtime Database y Functions, separada de los tests unitarios.
+## Matices importantes
 
-## Próximas Fases
-1. **Auditoría de rendimiento:** Monitorear latencias y optimizaciones adicionales al escalar a más campus universitarios.
-2. **Historial de alertas:** Persistencia de notificaciones en base de datos para visualización en bandeja de entrada histórica del cliente.
+- `checkPotentialMatches` devuelve matches, pero no envia notificaciones por si misma. Las alertas automaticas de matches se ejecutan en `onPostCreated`.
+- `markNotificationsRead` existe como callable, aunque el frontend actual tambien puede marcar notificaciones escribiendo directamente en `/users/{uid}/notifications`.
+- `createPostReport` existe y valida geovallado, pero el frontend actual finaliza publicaciones escribiendo directamente en `/posts`; el trigger `onPostCreated` vuelve a validar ubicacion e indexa.
+- Las reglas de Storage permiten lectura publica para posts/perfiles; no exigen email verificado en Storage.
 
-## Criterio de Auditoría
-Cada fase debe vivir en una rama separada y producir una PR pequeña. La intención es que cada revisión humana pueda responder fácilmente:
+## Siguientes mejoras naturales
 
-* qué requisito cubre,
-* qué archivos cambian,
-* qué riesgo introduce,
-* cómo se verificó.
+- Unificar la publicacion del cliente alrededor de `createPostReport` para concentrar la escritura final en backend.
+- Migrar el cliente a `markNotificationsRead` si se quiere evitar escritura directa de la bandeja.
+- Decidir si se mantiene la conversion WebP de posts en cliente o se reintroduce optimizacion backend real.
+- Revisar validacion de estados en `updatePostStatus`, ya que Admin SDK no aplica reglas de RTDB.

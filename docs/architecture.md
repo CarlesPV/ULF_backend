@@ -1,132 +1,114 @@
-# Documentación Arquitectónica: Backend Serverless
+# Arquitectura backend serverless
 
-## 1. Resumen del Cambio
-Para garantizar la integridad de la base de datos y evitar vulnerabilidades de escalada de privilegios, el flujo de registro de nuevos usuarios ha sido migrado de una arquitectura "Client-to-Auth" a una arquitectura **"Client-to-Serverless"**. 
+Revision: 22 de mayo de 2026.
 
-El cliente (App Flutter) ya no se comunica directamente con Firebase Authentication para crear cuentas. En su lugar, consume una **Callable Cloud Function** (`secureUniversityRegistration`) que actúa como barrera de seguridad, validando el dominio del correo y forzando la asignación de roles.
+El backend de ULF se organiza como un proyecto Firebase con Cloud Functions en TypeScript, Realtime Database, Storage, Auth, FCM, Translation API y Vision API.
 
-Además del registro, el backend expone callables para posts, feed, matcher, chats y notificaciones. Las funciones RF13 (`updatePostStatus`) y RF19 (`recordPostView`) ya existen y están exportadas desde `functions/src/index.ts`.
+## Estructura
 
-## 2. Flujo de Registro Actualizado
-1. **Petición del Cliente:** La app envía las credenciales (`email`, `password`, `name`) a la Cloud Function.
-2. **Validación de Dominio:** La función extrae el dominio (ej. `uab.cat` -> `uab_cat`) y consulta el nodo `/centers` en la Realtime Database (RTDB) para verificar si la universidad existe y está activa.
-3. **Creación Atómica:** - Se crea el usuario en Firebase Authentication usando el **Admin SDK**.
-   - Se genera el perfil en `/users/{uid}` dentro de la RTDB.
-4. **Seguridad (Zero Trust):** La función ignora cualquier rol enviado por el cliente e inyecta forzosamente `role: 'student'`.
-5. **Mecanismo de Rollback:** Si el paso de escritura en la RTDB falla (por error de red o de servidor), la función captura el error y **elimina al usuario de Authentication** para evitar perfiles "huérfanos" o bases de datos corruptas.
-
-## 3. Cambios en la Estructura del Proyecto
-Se ha introducido el ecosistema de Node.js/TypeScript al repositorio:
-
-```
-/ (raíz)
- ├── functions/                          # Entorno Backend Serverless
- │    ├── src/index.ts                   # Exporta las Cloud Functions públicas
- │    ├── src/auth/                      # Registro seguro
- │    ├── src/posts/                     # Reportes, estados, vistas y triggers
- │    ├── src/matcher/                   # Búsqueda de coincidencias
- │    ├── src/feed/                      # Feed filtrado por índice de activos
- │    ├── tests/unit/                    # Tests unitarios con Jest y mocks
- │    ├── tests/integration/             # Tests con Firebase Emulator Suite
- │    ├── package.json                   # Dependencias (firebase-admin, firebase-functions)
- │    └── tsconfig.json                  # Reglas de compilación de TypeScript
- ├── .github/workflows/deploy.yml        # Pipeline CI/CD
- ├── firebase.json                       # Referencia a la compilación de functions
- └── database/rules/database.rules.json  # Índices de optimización añadidos
+```text
+functions/
+├── src/
+│   ├── auth/                 # Registro seguro
+│   ├── chats/                # Chat callables y triggers
+│   ├── feed/                 # Feed filtrado
+│   ├── maintenance/          # Jobs y migraciones
+│   ├── matcher/              # Motor de matches
+│   ├── notifications/        # Callables de notificaciones
+│   ├── posts/                # Posts, vistas y triggers
+│   ├── shared/               # Firebase, i18n, translate, vision, tipos
+│   ├── storage/              # Triggers de Storage
+│   ├── users/                # Sincronizacion de perfil
+│   └── index.ts              # Export global
+├── tests/unit/
+├── tests/integration/
+├── package.json
+└── tsconfig.json
+database/rules/database.rules.json
+storage/rules/storage.rules
+database/seed/
 ```
 
-## 4. Componentes Críticos Modificados
+## Principios de diseno
 
-### A. CI/CD Pipeline (`deploy.yml`)
-El flujo de GitHub Actions separa la validación en dos jobs:
+- **Client-to-serverless para operaciones sensibles:** registro, chats, matcher, feed filtrado, notificaciones, vistas y cambios de estado se exponen como callables.
+- **RTDB reactiva:** posts, mensajes, chats, notificaciones y settings se sincronizan en tiempo real.
+- **Indices denormalizados:** `/active_posts/{center_id}` y `/active_posts/{center_id}/{type}` reducen lecturas para feed y matcher.
+- **Zero trust por capas:** reglas de RTDB/Storage limitan al cliente; Cloud Functions validan Auth, email verificado, dominio, autoria y geovallado cuando aplica.
+- **i18n de backend:** textos de notificaciones y traducciones de busqueda soportan `es`, `en` y `ca`, con `es` como idioma comun.
 
-| Job | Qué valida |
-| :--- | :--- |
-| `backend-unit-tests` | Compila y ejecuta Jest unitario en `/functions/tests/unit/` con mocks. |
-| `backend-integration-tests` | Instala Java 21 y ejecuta Firebase Emulator Suite contra `/functions/tests/integration/`. |
+## Registro seguro
 
-En `pull_request` hacia `develop` o `master` solo se ejecutan los tests. En `push` a `develop` o `master`, el despliegue espera a que ambos jobs pasen antes de ejecutar:
-`firebase deploy --only database,functions,storage`
+`secureUniversityRegistration` reemplaza la creacion directa desde el cliente:
 
-La suite unitaria contiene 105 tests. La suite de integración levanta emuladores de Auth, Realtime Database y Functions para validar flujos críticos sin tocar Firebase real.
+1. Valida `email`, `password`, `name` y aceptacion legal.
+2. Resuelve `language` o `preferredLanguage`.
+3. Busca un centro activo cuyo `email_domains/{domain_with_underscores}` sea `true`.
+4. Crea el usuario en Firebase Auth con Admin SDK.
+5. Escribe `/users/{uid}` con `role: "student"`, settings iniciales, legal y `acceptedTermsVersion`.
+6. Si falla la escritura en RTDB, elimina el usuario creado en Auth.
 
-### B. Índices en Realtime Database
-Se ha añadido la regla `.indexOn: ["is_active"]` al nodo `/centers` en `database.rules.json` para optimizar el filtrado al registrar usuarios, evitando la descarga completa de la colección.
+## Catalogo de callables
 
-El feed y el matcher usan el índice secundario `/active_posts/{center_id}` para leer solo publicaciones activas. Ese índice lo mantienen los triggers `onPostCreated`, `onPostUpdated` y `onPostDeleted`.
-
-### C. Consumo desde Flutter (Guía para Frontend)
-Los desarrolladores de la app móvil ya no deben usar `FirebaseAuth.instance.createUserWithEmailAndPassword`. Deben invocar la función de la siguiente manera:
-
-```dart
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-
-Future<void> registerAndVerify(String email, String password, String name) async {
-  final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('secureUniversityRegistration');
-  
-  try {
-    // 1. El backend crea el usuario de forma segura
-    await callable.call(<String, dynamic>{
-      'email': email,
-      'password': password,
-      'name': name,
-    });
-    
-    // 2. El frontend inicia sesión inmediatamente
-    UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-
-    // 3. El frontend dispara el correo de verificación nativo de Firebase
-    if (userCredential.user != null && !userCredential.user!.emailVerified) {
-      await userCredential.user!.sendEmailVerification();
-      print("Por favor, verifica tu bandeja de entrada.");
-    }
-    
-  } on FirebaseFunctionsException catch (e) {
-    print("Error del servidor: ${e.message}"); 
-  }
-}
-```
-
-## 5. Requisitos de Infraestructura (Firebase Console)
-Para que esta arquitectura funcione de forma estricta y segura, los administradores del proyecto deben asegurar dos configuraciones manuales en la consola web de Firebase:
-1. **Bloquear registro por defecto:** En *Authentication > Settings > User actions*, deshabilitar "Enable create (sign-up)". Esto evita que un atacante salte la Cloud Function usando la API pública de Firebase.
-2. **Backups:** En *Realtime Database > Backups*, habilitar las copias de seguridad diarias automatizadas (Requiere Plan Blaze). **AÚN SIN REALIZAR**.
-
-## 6. Catálogo de Cloud Functions
-
-El sistema utiliza Firebase Cloud Functions (Node.js/TypeScript) para procesar lógica de negocio de forma segura.
-
-### 6.1 Funciones Callables (Invocables desde el cliente)
-| Función | Propósito | Payload Requerido |
+| Funcion | Payload real | Resultado |
 | :--- | :--- | :--- |
-| `secureUniversityRegistration` | Registro seguro de usuarios con validación de dominio. | `email`, `password`, `name`, `language` (opcional). |
-| `createPostReport` | Crea una nueva publicación de objeto perdido/encontrado. | `center_id`, `type`, `title`, `description`, `category`, `lat`, `lng`, `photo_path`. |
-| `updatePostStatus` | Cambia el estado de un post (`matched`, `returned`). | `post_id`, `new_status`. |
-| `recordPostView` | Registra que un usuario ha visualizado un post. | `post_id`. |
-| `getFilteredFeed` | Recupera el feed de posts activos filtrado. | `center_id`, `type`, `search_term` (opcional). |
-| `checkPotentialMatches` | Busca coincidencias inteligentes para un objeto. | `center_id`, `type`, `category`, `color`, `description`. |
-| `saveFcmToken` | Registra el token de notificaciones push del usuario. | `token`. |
-| `getOrCreateChat` | Inicia o recupera una conversación privada. | `post_id`, `owner_id`. |
+| `secureUniversityRegistration` | `email`, `password`, `name`, `language` o `preferredLanguage`, `termsAccepted`, `privacyAccepted`, `acceptedTermsVersion` opcional | `{ success, uid }` |
+| `createPostReport` | `center_id`, `type`, `title`, `description?`, `category`, `lat`, `lng`, `photo_path?` | `{ success, post_id }` |
+| `updatePostStatus` | `postId`, `newStatus` | `{ success }` |
+| `recordPostView` | `postId` | `{ success }` |
+| `getFilteredFeed` | `center_id`, `type`, `category?`, `search_term?`, `max_results?`, `user_lat?`, `user_lng?`, `sort_by?` | `{ feed }` |
+| `checkPotentialMatches` | `center_id`, `category`, `type`, `title?`, `description?`, `location?`, `postImageUrl?`, `created_at?` | `{ matches }` |
+| `saveFcmToken` | `token` | `{ success, message }` |
+| `markNotificationsRead` | `notificationId?`, `notificationIds?`, `all?` | `{ success }` |
+| `getOrCreateChat` | `postId`, `postOwnerId`, `centerId`, `postTitle` | `{ chatId }` |
+| `backfillTermsVersion` | sin payload | `{ success, processed, updated }` para administradores |
 
-### 6.2 Triggers (Eventos de base de datos / storage)
-| Trigger | Evento | Acción |
+## Triggers y jobs
+
+| Funcion | Evento | Accion |
 | :--- | :--- | :--- |
-| `onPostCreated` | `posts/{id}` (Creación) | Indexa en `/active_posts` y traduce la descripción al idioma común. |
-| `onPostUpdated` | `posts/{id}` (Escritura) | Sincroniza el índice de activos según el `status` y `is_deleted`. |
-| `onPostDeleted` | `posts/{id}` (Borrado) | Elimina la referencia del índice de activos. |
-| `onMessageCreated` | `messages/{chatId}/{id}` | Envía notificación push localizada al destinatario del mensaje. |
-| `onImageUploaded` | Cloud Storage (Upload) | Si es perfil: optimiza a WebP. Si es post: detecta etiquetas con Vision AI. |
+| `onPostCreated` | RTDB `/posts/{postId}` create | Valida geovallado, indexa activos, traduce titulo/descripcion y busca matches para notificar a propietarios de posts compatibles. |
+| `onPostUpdated` | RTDB `/posts/{postId}` update | Sincroniza indices activos, actualiza metadatos de chats y elimina imagen anterior si cambia la URL. |
+| `onPostDeleted` | RTDB `/posts/{postId}` delete | Elimina entradas en `/active_posts`. |
+| `onMessageCreated` | RTDB `/messages/{chatId}/{messageId}` create | Actualiza `last_message`, reordena `user_chats`, guarda notificacion in-app y envia FCM al resto de miembros. |
+| `onImageUploaded` | Storage `onObjectFinalized` | En posts extrae etiquetas Vision y actualiza `vision_labels`; en perfiles dinamicos puede generar `profile_image.webp`. |
+| `onProfileImageUploaded` | Storage `users/{uid}/profile_image` | Sincroniza `photoUrl` del usuario con una URL Firebase Storage persistente. |
+| `onUserProfileUpdated` | RTDB `/users/{userId}` update | Propaga cambios de nombre/foto a `usersInfo` de chats. |
+| `purgeUnverifiedAccounts` | Schedule diario 02:00 | Elimina cuentas de Auth no verificadas con mas de 48 horas. |
 
-### 6.3 Tareas Programadas (Cron)
-| Función | Frecuencia | Acción |
-| :--- | :--- | :--- |
-| `purgeUnverifiedAccounts` | Diario (02:00 AM) | Elimina cuentas registradas hace >48h que no han verificado su correo. |
+## Feed y matcher
 
-## 7. Próximos Pasos Técnicos
-1. Mantener la suite de tests sincronizada con los cambios de contrato.
-2. Implementar logs de auditoría en BigQuery para analíticas de objetos encontrados vs. devueltos.
-3. Refinar los umbrales de coincidencia en el Matcher basado en feedback real.
+`getFilteredFeed` lee claves desde `/active_posts/{center_id}/{type}`, recupera posts completos en paralelo, traduce `search_term` al idioma comun y filtra por tipo, categoria, texto y etiquetas visuales. Puede ordenar por fecha o distancia.
+
+`checkPotentialMatches` busca el tipo opuesto en `/active_posts/{center_id}/{targetType}`. El scoring actual combina:
+
+- ratio de tokens del titulo contra `translated_title` o `title`;
+- ratio de tokens de descripcion contra `translated_description` o `description`;
+- bonus si ambos posts tienen imagen;
+- proximidad temporal con decaimiento exponencial.
+
+La callable devuelve hasta 5 matches y no envia notificaciones por si sola. Las notificaciones automaticas de matches se disparan desde `onPostCreated`.
+
+## Notificaciones
+
+El backend soporta dos canales:
+
+- FCM via `/users/{uid}/fcm_tokens`.
+- Bandeja in-app en `/users/{uid}/notifications`.
+
+`sendNotificationToUser` respeta `settings/pushNotificationsEnabled`; solo un `false` explicito desactiva push. Tokens invalidos se eliminan automaticamente. `notifyMatchFound` y `onMessageCreated` tambien guardan notificaciones in-app.
+
+## Storage
+
+Las reglas permiten lectura publica de imagenes de posts y perfiles, y escritura autenticada con limite de 5 MB. Las imagenes de chat requieren autenticacion para lectura y escritura. El backend no convierte actualmente las imagenes de posts a WebP; el cliente ya las sube como WebP y el trigger de posts se ocupa de Vision labels.
+
+## CI/CD
+
+`.github/workflows/deploy.yml` define:
+
+- `backend-unit-tests`: Node 20, `npm run test:unit`.
+- `backend-integration-tests`: Node 20, Java 21, `npm run test:integration`.
+- `deploy-backend`: en push, despliega `database,functions,storage`.
+- `seed-database`: en push, ejecuta el seed despues del deploy.
+
+El workflow se activa en PR y push hacia `develop` y `master`.
