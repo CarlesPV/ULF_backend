@@ -45,6 +45,7 @@ export { recordPostView } from "./posts/recordPostView";
 export { getFilteredFeed } from "./feed/getFilteredFeed";
 export { checkPotentialMatches } from "./matcher/checkPotentialMatches";
 export { purgeUnverifiedAccounts } from "./maintenance/purgeUnverifiedAccounts";
+export { backfillTermsVersion } from "./maintenance/backfillTermsVersion";
 export { saveFcmToken } from "./notifications/saveFcmToken";
 export { markNotificationsRead } from "./notifications/markNotificationsRead";
 export { onMessageCreated } from "./chats/onMessageCreated";
