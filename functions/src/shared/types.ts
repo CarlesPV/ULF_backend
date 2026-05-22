@@ -1,6 +1,6 @@
 export type Category = "accessories" | "clothes" | "devices" | "wallets" | "keys" | "bags" | "study" | "others";
 
-export type PostStatus = "active" | "matched" | "returned";
+export type PostStatus = "active" | "matched" | "returned" | "rejected";
 
 export interface PostReportPayload {
     center_id: string;

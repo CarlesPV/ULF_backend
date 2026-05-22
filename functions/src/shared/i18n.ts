@@ -62,6 +62,11 @@ export const I18N_STRINGS = {
             es: "Devuelto",
             ca: "Retornat",
             en: "Returned"
+        },
+        rejected: {
+            es: "Rechazado",
+            ca: "Rebutjat",
+            en: "Rejected"
         }
     },
     // Códigos de error estandarizados que se transmiten al cliente para traducción dinámica en la interfaz de usuario
