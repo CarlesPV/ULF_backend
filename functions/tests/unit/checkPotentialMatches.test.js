@@ -91,7 +91,7 @@ describe("checkPotentialMatches", () => {
           id: "lost-1",
           title: "Llaves azules",
           description: undefined,
-          score: 0.5,
+          score: 0.6,
           photo_path: "posts/lost-1.jpg",
           postImageUrl: ""
         }
@@ -224,7 +224,7 @@ describe("checkPotentialMatches", () => {
           id: "lost-1",
           title: "Llaves",
           description: "Llavero rojo intenso",
-          score: 0.5,
+          score: 0.6,
           photo_path: "posts/lost-1.jpg",
           postImageUrl: ""
         }
@@ -276,7 +276,7 @@ describe("checkPotentialMatches", () => {
       id: "lost-6",
       title: "Candidate 6",
       description: undefined,
-      score: 1.5,
+      score: 1.6,
       photo_path: "posts/lost-6.jpg",
       postImageUrl: ""
     });
@@ -328,7 +328,7 @@ describe("checkPotentialMatches", () => {
         id: "lost-special",
         title: "Special keychain",
         description: undefined,
-        score: 1,
+        score: 1.1,
         photo_path: "posts/lost-special.jpg",
         postImageUrl: ""
       },
@@ -336,10 +336,98 @@ describe("checkPotentialMatches", () => {
         id: "lost-normal",
         title: "Ordinary keys",
         description: undefined,
-        score: 0.5,
+        score: 0.6,
         photo_path: "posts/lost-normal.jpg",
         postImageUrl: ""
       }
     ]);
+  });
+
+  test("excludes candidates created by the current user", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-1": 100,
+          "lost-own": 101
+        },
+        "posts/lost-1": {
+          id: "lost-1",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          user_id: "other-user",
+          title: "Llaves",
+          translated_description: "keys",
+          photo_path: "posts/lost-1.jpg"
+        },
+        "posts/lost-own": {
+          id: "lost-own",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          user_id: "user-1",
+          title: "Mis llaves",
+          translated_description: "keys",
+          photo_path: "posts/lost-own.jpg"
+        }
+      },
+      translateResult: "keys"
+    });
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      description: "keys"
+    }));
+
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].id).toBe("lost-1");
+  });
+
+  test("allows candidates from different categories and awards category bonus", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-same-cat": 100,
+          "lost-diff-cat": 101
+        },
+        "posts/lost-same-cat": {
+          id: "lost-same-cat",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          user_id: "other-user",
+          title: "Llaves rojas",
+          translated_description: "red keychain",
+          photo_path: "posts/lost-same.jpg"
+        },
+        "posts/lost-diff-cat": {
+          id: "lost-diff-cat",
+          type: "lost",
+          category: "accessories",
+          is_deleted: false,
+          user_id: "other-user",
+          title: "Llavero rojo",
+          translated_description: "red keychain",
+          photo_path: "posts/lost-diff.jpg"
+        }
+      },
+      translateResult: "red keychain"
+    });
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      description: "rojo"
+    }));
+
+    expect(result.matches).toHaveLength(2);
+    expect(result.matches[0].id).toBe("lost-same-cat");
+    expect(result.matches[1].id).toBe("lost-diff-cat");
+    expect(result.matches[0].score).toBeGreaterThan(result.matches[1].score);
   });
 });

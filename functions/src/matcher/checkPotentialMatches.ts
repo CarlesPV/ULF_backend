@@ -9,6 +9,7 @@ const SCORE_THRESHOLDS = {
     DESCRIPTION_MAX: 0.5,
     IMAGE_BONUS: 0.25,
     DATE_MAX: 0.2,
+    CATEGORY_BONUS: 0.1,
 };
 
 const STOP_WORDS = new Set([
@@ -98,7 +99,10 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         const post = snap.val();
 
         // Filtros obligatorios (hard filters) — no contribuyen al score
-        if (post.type !== targetType || post.category !== category || post.is_deleted) continue;
+        if (post.type !== targetType || post.is_deleted) continue;
+
+        // Excluir publicaciones del propio usuario
+        if (post.user_id === request.auth.uid) continue;
 
         let score = 0;
 
@@ -122,6 +126,11 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         const sourceTs = typeof created_at === "number" ? created_at : 0;
         const targetTs = typeof post.created_at === "number" ? post.created_at : (post.date || 0);
         score += dateProximityScore(sourceTs, targetTs, SCORE_THRESHOLDS.DATE_MAX);
+
+        // 5. CATEGORÍA — bonus por coincidencia de categoría
+        if (post.category === category) {
+            score += SCORE_THRESHOLDS.CATEGORY_BONUS;
+        }
 
         // Filtrar por score mínimo
         if (score < SCORE_THRESHOLDS.MIN_MATCH_SCORE) continue;

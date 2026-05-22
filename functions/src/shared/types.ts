@@ -109,3 +109,24 @@ export interface Center {
     }[];
     is_active: boolean;
 }
+
+export interface Chat {
+    id: string;
+    center_id: string;
+    post_id: string;
+    post_owner_id: string;
+    postTitle: string;
+    postImageUrl?: string | null;
+    members: { [uid: string]: boolean };
+    usersInfo: {
+        [uid: string]: {
+            displayName: string;
+            photoUrl?: string | null;
+        }
+    };
+    created_at: any;
+    last_message: string;
+    last_message_time: any;
+    isActive?: boolean;
+    disabledReason?: "deleted" | "resolved";
+}

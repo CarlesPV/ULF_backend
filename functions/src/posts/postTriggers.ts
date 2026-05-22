@@ -156,6 +156,16 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
         tasks.push(syncPostMetadataToChats(event.params.postId, after.title, after.postImageUrl || after.imageUrl));
     }
 
+    // Inhabilitación de chats en cascada por cambio de estado a devuelto o eliminado
+    const newlyDeleted = after.is_deleted === true && (!before || before.is_deleted !== true);
+    const newlyResolved = (after.status === "returned" || after.status === "resolved") && (!before || (before.status !== "returned" && before.status !== "resolved"));
+
+    if (newlyDeleted) {
+        tasks.push(disableChatsForPost(event.params.postId, "deleted"));
+    } else if (newlyResolved) {
+        tasks.push(disableChatsForPost(event.params.postId, "resolved"));
+    }
+
     // Gestión de archivos huérfanos: Si la URL de imagen ha cambiado, eliminamos la anterior física de Storage
     const oldImageUrl = before?.imageUrl;
     const newImageUrl = after?.imageUrl;
@@ -215,6 +225,31 @@ async function syncPostMetadataToChats(postId: string, title: string, imageUrl: 
 }
 
 /**
+ * Inhabilita todos los chats asociados a una publicación.
+ *
+ * @param postId - Identificador único de la publicación.
+ * @param reason - Razón de la inhabilitación ('deleted' o 'resolved').
+ */
+async function disableChatsForPost(postId: string, reason: "deleted" | "resolved"): Promise<void> {
+    const chatsQuery = await admin.database()
+        .ref("chats")
+        .orderByChild("post_id")
+        .equalTo(postId)
+        .once("value");
+
+    if (!chatsQuery.exists()) return;
+
+    const updates: { [key: string]: any } = {};
+    chatsQuery.forEach((chatSnapshot) => {
+        const chatId = chatSnapshot.key;
+        updates[`chats/${chatId}/isActive`] = false;
+        updates[`chats/${chatId}/disabledReason`] = reason;
+    });
+
+    await admin.database().ref().update(updates);
+}
+
+/**
  * Trigger de Realtime Database v2 que se activa al eliminarse físicamente una publicación en `/posts/{postId}`.
  *
  * Elimina de manera definitiva la clave del post de la ruta `/active_posts/{center_id}/{postId}` para evitar
@@ -229,7 +264,8 @@ export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any
     const tasks: Promise<any>[] = [
         admin.database()
             .ref(`active_posts/${before.center_id}/${event.params.postId}`)
-            .remove()
+            .remove(),
+        disableChatsForPost(event.params.postId, "deleted")
     ];
 
     if (before.type) {
