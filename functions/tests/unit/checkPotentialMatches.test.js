@@ -52,6 +52,7 @@ describe("checkPotentialMatches", () => {
           category: "keys",
           is_deleted: false,
           title: "Llaves azules",
+          translated_title: "blue keys",
           translated_description: "blue ribbon keychain",
           photo_path: "posts/lost-1.jpg"
         },
@@ -73,15 +74,20 @@ describe("checkPotentialMatches", () => {
           translated_description: "blue ribbon",
           photo_path: "posts/deleted-1.jpg"
         }
-      },
-      translateResult: "blue ribbon"
+      }
     });
+
+    env.translateText
+      .mockResolvedValueOnce("keys")
+      .mockResolvedValueOnce("blue ribbon");
+
     const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
 
     const result = await checkPotentialMatches(verifiedRequest({
       center_id: "uab",
       type: "found",
       category: "keys",
+      title: "llaves",
       description: "cinta"
     }));
 
@@ -91,7 +97,7 @@ describe("checkPotentialMatches", () => {
           id: "lost-1",
           title: "Llaves azules",
           description: undefined,
-          score: 0.6,
+          score: 1.6,
           photo_path: "posts/lost-1.jpg",
           postImageUrl: ""
         }
@@ -99,6 +105,7 @@ describe("checkPotentialMatches", () => {
     });
     expect(env.refMock).toHaveBeenCalledWith("active_posts/uab/lost");
     expect(env.refMock).toHaveBeenCalledWith("posts/lost-1");
+    expect(env.translateText).toHaveBeenCalledWith("llaves", "es");
     expect(env.translateText).toHaveBeenCalledWith("cinta", "es");
   });
 
@@ -215,6 +222,7 @@ describe("checkPotentialMatches", () => {
       center_id: "uab",
       type: "found",
       category: "keys",
+      title: "llaves",
       description: "rojo"
     }));
 
@@ -224,7 +232,7 @@ describe("checkPotentialMatches", () => {
           id: "lost-1",
           title: "Llaves",
           description: "Llavero rojo intenso",
-          score: 0.6,
+          score: 1.6,
           photo_path: "posts/lost-1.jpg",
           postImageUrl: ""
         }
@@ -304,12 +312,16 @@ describe("checkPotentialMatches", () => {
           category: "keys",
           is_deleted: false,
           title: "Ordinary keys",
-          translated_description: "some other details",
+          translated_description: "ordinary details",
           photo_path: "posts/lost-normal.jpg"
         }
-      },
-      translateResult: "special key"
+      }
     });
+
+    env.translateText
+      .mockResolvedValueOnce("special key")
+      .mockResolvedValueOnce("ordinary key holder ring");
+
     const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
 
     const result = await checkPotentialMatches(verifiedRequest({
@@ -336,7 +348,7 @@ describe("checkPotentialMatches", () => {
         id: "lost-normal",
         title: "Ordinary keys",
         description: undefined,
-        score: 0.6,
+        score: 0.85,
         photo_path: "posts/lost-normal.jpg",
         postImageUrl: ""
       }
@@ -357,6 +369,7 @@ describe("checkPotentialMatches", () => {
           is_deleted: false,
           user_id: "other-user",
           title: "Llaves",
+          translated_title: "keys",
           translated_description: "keys",
           photo_path: "posts/lost-1.jpg"
         },
@@ -367,6 +380,7 @@ describe("checkPotentialMatches", () => {
           is_deleted: false,
           user_id: "user-1",
           title: "Mis llaves",
+          translated_title: "keys",
           translated_description: "keys",
           photo_path: "posts/lost-own.jpg"
         }
@@ -379,6 +393,7 @@ describe("checkPotentialMatches", () => {
       center_id: "uab",
       type: "found",
       category: "keys",
+      title: "keys",
       description: "keys"
     }));
 
@@ -400,6 +415,7 @@ describe("checkPotentialMatches", () => {
           is_deleted: false,
           user_id: "other-user",
           title: "Llaves rojas",
+          translated_title: "red keychain",
           translated_description: "red keychain",
           photo_path: "posts/lost-same.jpg"
         },
@@ -410,6 +426,7 @@ describe("checkPotentialMatches", () => {
           is_deleted: false,
           user_id: "other-user",
           title: "Llavero rojo",
+          translated_title: "red keychain",
           translated_description: "red keychain",
           photo_path: "posts/lost-diff.jpg"
         }
@@ -422,6 +439,7 @@ describe("checkPotentialMatches", () => {
       center_id: "uab",
       type: "found",
       category: "keys",
+      title: "rojo",
       description: "rojo"
     }));
 

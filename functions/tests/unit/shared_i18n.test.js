@@ -9,6 +9,6 @@ describe("shared i18n", () => {
   test("falls back to English for unsupported languages", () => {
     const { getNotificationString } = require("../../lib/shared/i18n");
 
-    expect(getNotificationString("match_found_title", "fr")).toBe("Match found!");
+    expect(getNotificationString("match_found_title", "fr")).toBe("Possible match!");
   });
 });
