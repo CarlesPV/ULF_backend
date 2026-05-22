@@ -82,7 +82,6 @@ describe("checkPotentialMatches", () => {
       center_id: "uab",
       type: "found",
       category: "keys",
-      color: "azul",
       description: "cinta"
     }));
 
@@ -92,7 +91,7 @@ describe("checkPotentialMatches", () => {
           id: "lost-1",
           title: "Llaves azules",
           description: undefined,
-          score: 2,
+          score: 0.5,
           photo_path: "posts/lost-1.jpg",
           postImageUrl: ""
         }
@@ -100,7 +99,7 @@ describe("checkPotentialMatches", () => {
     });
     expect(env.refMock).toHaveBeenCalledWith("active_posts/uab/lost");
     expect(env.refMock).toHaveBeenCalledWith("posts/lost-1");
-    expect(env.translateText).toHaveBeenCalledWith("azul cinta", "es");
+    expect(env.translateText).toHaveBeenCalledWith("cinta", "es");
   });
 
   test("returns an empty list when the active index has no entries", async () => {
@@ -142,7 +141,7 @@ describe("checkPotentialMatches", () => {
   });
 
 
-  test("returns a base score when only type and category match", async () => {
+  test("excludes candidates when they only match type and category but score is below threshold", async () => {
     const env = setupCallableTestEnv({
       onceByPath: {
         "active_posts/uab/lost": {
@@ -187,18 +186,7 @@ describe("checkPotentialMatches", () => {
       category: "keys"
     }));
 
-    expect(result).toEqual({
-      matches: [
-        {
-          id: "lost-1",
-          title: "Llaves",
-          description: "Sin detalles",
-          score: 1,
-          photo_path: "posts/lost-1.jpg",
-          postImageUrl: ""
-        }
-      ]
-    });
+    expect(result).toEqual({ matches: [] });
     expect(env.translateText).not.toHaveBeenCalled();
   });
 
@@ -227,7 +215,7 @@ describe("checkPotentialMatches", () => {
       center_id: "uab",
       type: "found",
       category: "keys",
-      color: "rojo"
+      description: "rojo"
     }));
 
     expect(result).toEqual({
@@ -236,7 +224,7 @@ describe("checkPotentialMatches", () => {
           id: "lost-1",
           title: "Llaves",
           description: "Llavero rojo intenso",
-          score: 1.5,
+          score: 0.5,
           photo_path: "posts/lost-1.jpg",
           postImageUrl: ""
         }
@@ -258,25 +246,29 @@ describe("checkPotentialMatches", () => {
         category: "keys",
         is_deleted: false,
         title: `Candidate ${index}`,
-        translated_description: index === 6 ? "alpha beta gamma" : "alpha",
+        translated_description: index === 6 ? "keys" : "other",
         photo_path: `posts/${id}.jpg`
       };
     }
 
-    setupCallableTestEnv({
+    const env = setupCallableTestEnv({
       onceByPath: {
         "active_posts/uab/lost": activePosts,
         ...posts
-      },
-      translateResult: "alpha beta gamma"
+      }
     });
+    env.translateText
+      .mockResolvedValueOnce("candidate")
+      .mockResolvedValueOnce("keys");
+
     const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
 
     const result = await checkPotentialMatches(verifiedRequest({
       center_id: "uab",
       type: "found",
       category: "keys",
-      description: "alpha beta gamma"
+      title: "candidate",
+      description: "keys"
     }));
 
     expect(result.matches).toHaveLength(5);
@@ -284,7 +276,7 @@ describe("checkPotentialMatches", () => {
       id: "lost-6",
       title: "Candidate 6",
       description: undefined,
-      score: 2.5,
+      score: 1.5,
       photo_path: "posts/lost-6.jpg",
       postImageUrl: ""
     });
@@ -325,22 +317,18 @@ describe("checkPotentialMatches", () => {
       type: "found",
       category: "keys",
       title: "especial",
-      color: "azul",
       description: "llavero"
     }));
 
-    // Expect translation to be called with: "especial azul llavero"
-    expect(env.translateText).toHaveBeenCalledWith("especial azul llavero", "es");
+    expect(env.translateText).toHaveBeenCalledWith("especial", "es");
+    expect(env.translateText).toHaveBeenCalledWith("llavero", "es");
 
-    // "special key" splits to ["special", "key"]
-    // "lost-special" has targetDesc = "special keychain some other details". Words "special" and "key" match, so score = 1.0 (base) + 2 * 0.5 = 2.0
-    // "lost-normal" has targetDesc = "ordinary keys some other details". Word "key" matches, so score = 1.0 (base) + 0.5 = 1.5
     expect(result.matches).toEqual([
       {
         id: "lost-special",
         title: "Special keychain",
         description: undefined,
-        score: 2,
+        score: 1,
         photo_path: "posts/lost-special.jpg",
         postImageUrl: ""
       },
@@ -348,7 +336,7 @@ describe("checkPotentialMatches", () => {
         id: "lost-normal",
         title: "Ordinary keys",
         description: undefined,
-        score: 1.5,
+        score: 0.5,
         photo_path: "posts/lost-normal.jpg",
         postImageUrl: ""
       }
