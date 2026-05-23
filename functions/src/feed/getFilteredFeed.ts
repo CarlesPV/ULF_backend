@@ -79,7 +79,7 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         postIds = [...lostIds, ...foundIds];
     }
 
-    if (postIds.length === 0) return { feed: [] };
+    if (postIds.length === 0) return { feed: [], posts: [] };
 
     // Recuperar concurrently el detalle de cada post empleando las claves indexadas
     const postFetches = postIds.map(id =>
@@ -179,5 +179,5 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
             .slice(0, max_results);
     }
 
-    return { feed };
+    return { feed, posts: feed };
 });
