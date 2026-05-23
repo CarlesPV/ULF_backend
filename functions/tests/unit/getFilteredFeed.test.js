@@ -42,7 +42,7 @@ describe("getFilteredFeed search", () => {
 
         await expect(getFilteredFeed({
             auth: { token: { email_verified: true } },
-            data: { center_id: "uab" }
+            data: { type: "lost" }
         })).rejects.toMatchObject({ code: "invalid-argument" });
     });
 
@@ -308,5 +308,42 @@ describe("getFilteredFeed search", () => {
         expect(result.feed[0].distance).toBeDefined();
         expect(result.feed[1].distance).toBeDefined();
         expect(result.feed[0].distance).toBeLessThan(result.feed[1].distance);
+    });
+
+    test("should fetch and merge both lost and found posts when type is not specified", async () => {
+        setupCallableTestEnv({
+            onceByPath: {
+                "active_posts/uab/lost": { "post-lost-1": 1000 },
+                "active_posts/uab/found": { "post-found-1": 1100 },
+                "posts/post-lost-1": {
+                    id: "post-lost-1",
+                    center_id: "uab",
+                    type: "lost",
+                    status: "active",
+                    is_deleted: false,
+                    created_at: 1000
+                },
+                "posts/post-found-1": {
+                    id: "post-found-1",
+                    center_id: "uab",
+                    type: "found",
+                    status: "active",
+                    is_deleted: false,
+                    created_at: 1100
+                }
+            }
+        });
+        const { getFilteredFeed } = require("../../lib/feed/getFilteredFeed");
+
+        const result = await getFilteredFeed({
+            auth: { token: { email_verified: true } },
+            data: {
+                center_id: "uab"
+            }
+        });
+
+        expect(result.feed).toHaveLength(2);
+        expect(result.feed[0].id).toBe("post-found-1");
+        expect(result.feed[1].id).toBe("post-lost-1");
     });
 });
