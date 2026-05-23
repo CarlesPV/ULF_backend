@@ -11,8 +11,9 @@
 5. Recupera posts en paralelo.
 6. Traduce `title` y `description` del post origen al idioma base (`es`) cuando existen.
 7. Tokeniza texto ignorando palabras cortas y stop words.
-8. Filtra candidatos por tipo opuesto, misma categoria y no borrados.
-9. Calcula score y devuelve hasta 5 resultados ordenados.
+8. Filtra candidatos por tipo opuesto, misma categoria, no pertenecientes al mismo usuario, y no borrados.
+9. Calcula score. Si la mejor coincidencia supera el umbral de `0.80` y se ha suministrado el identificador del post de origen (`id` / `postId` / `post_id`), se ejecuta una transacción que actualiza el estado de ambos posts a `'matched'` en la base de datos y se envían alertas de coincidencia (`notifyMatchFound`) a ambos propietarios.
+10. Devuelve hasta 5 resultados ordenados.
 
 ## Payload
 
@@ -26,8 +27,7 @@
 | `location` | `string` | No | Aceptado por el payload; no aporta puntuacion directa en la version actual. |
 | `postImageUrl` / `imageUrl` / `photo_url` | `string` | No | Activa bonus si ambos posts tienen imagen. |
 | `created_at` | `number` | No | Usado para proximidad temporal. |
-
-No existe parametro `notifyMatches` en el codigo actual y esta callable no envia notificaciones. Las notificaciones automaticas de matches se hacen en `onPostCreated`.
+| `id` / `postId` / `post_id` | `string` | No | ID del post origen. Si se proporciona y la coincidencia supera el umbral de `0.80`, se realiza el match automático y se envían notificaciones. |
 
 ## Scoring
 
@@ -39,14 +39,16 @@ Constantes actuales:
 | Descripcion | `0.5` |
 | Imagen | `0.25` |
 | Fecha | `0.2` |
-| Umbral minimo | `0.5` |
+| Categoria | `0.1` |
+| Umbral minimo | `0.80` |
 
 El score combina:
 
-- ratio de tokens de titulo encontrados en `translated_title` o `title`;
-- ratio de tokens de descripcion encontrados en `translated_description` o `description`;
-- bonus si origen y candidato tienen imagen;
-- decaimiento exponencial por diferencia de dias.
+- ratio de tokens de titulo encontrados en `translated_title` o `title` (hasta 1.0);
+- ratio de tokens de descripcion encontrados en `translated_description` o `description` (hasta 0.5);
+- bonus si origen y candidato tienen imagen (0.25);
+- decaimiento exponencial por diferencia de dias (hasta 0.2);
+- bonus por coincidir en categoría (0.1).
 
 ## Ejemplo
 

@@ -80,14 +80,7 @@ database/seed/
 
 `getFilteredFeed` lee claves desde `/active_posts/{center_id}/{type}`, recupera posts completos en paralelo, traduce `search_term` al idioma comun y filtra por tipo, categoria, texto y etiquetas visuales. Puede ordenar por fecha o distancia.
 
-`checkPotentialMatches` busca el tipo opuesto en `/active_posts/{center_id}/{targetType}`. El scoring actual combina:
-
-- ratio de tokens del titulo contra `translated_title` o `title`;
-- ratio de tokens de descripcion contra `translated_description` o `description`;
-- bonus si ambos posts tienen imagen;
-- proximidad temporal con decaimiento exponencial.
-
-La callable devuelve hasta 5 matches y no envia notificaciones por si sola. Las notificaciones automaticas de matches se disparan desde `onPostCreated`.
+La callable devuelve hasta 5 matches ordenados. Adicionalmente, si el cliente provee el ID del post de origen y el mejor candidato supera un score de `0.80`, se ejecuta una transacción atómica que marca ambos posts como `'matched'` en base de datos y se envían notificaciones a ambos usuarios mediante `notifyMatchFound`. Las notificaciones automáticas independientes de nuevos posts también se disparan desde `onPostCreated`.
 
 ## Notificaciones
 

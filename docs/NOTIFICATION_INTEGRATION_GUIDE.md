@@ -55,19 +55,24 @@ Payloads aceptados:
 
 Si no se envia ningun ID, la callable tambien marca todas.
 
-## Como se envian matches
+## Cómo se envían matches y notificaciones
 
-No hay envio manual desde `checkPotentialMatches`. El flujo real es:
+Las notificaciones de matches se disparan en dos flujos diferentes:
 
+### 1. Flujo automático en base de datos (`onPostCreated`)
+Cuando se crea físicamente un post en `/posts`:
 ```text
-Cliente escribe un post en /posts
-  -> onPostCreated
-  -> notifyMatchesForNewPost
-  -> notifyMatchFound
+onPostCreated
+  -> notifyMatchesForNewPost (umbral de score >= 1.5)
+  -> notifyMatchFound (a los autores de las coincidencias de tipo opuesto)
   -> FCM + /users/{uid}/notifications
 ```
 
-La busqueda previa del cliente con `checkPotentialMatches` sirve para mostrar sugerencias antes de publicar, pero no notifica a terceros.
+### 2. Flujo de coincidencia proactiva (`checkPotentialMatches`)
+Cuando el cliente llama a la callable `checkPotentialMatches` pasando el ID del post de origen (en `id`, `postId` o `post_id`):
+- Si el score del mejor match es `>= 0.80`, se ejecuta una transacción que marca ambos posts como `'matched'` en la base de datos.
+- Se envían alertas `notifyMatchFound` de forma push e in-app a ambos usuarios destinatarios.
+- Si no se suministra el ID del post o el score es inferior a `0.80`, solo se devuelven los posibles candidatos sin realizar cambios ni notificaciones.
 
 ## Utilidades internas
 

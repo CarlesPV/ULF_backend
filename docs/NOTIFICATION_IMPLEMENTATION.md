@@ -24,7 +24,7 @@ Nuevo post en /posts
   -> saveInAppNotification + sendNotificationToUser
 ```
 
-`checkPotentialMatches` no envia notificaciones ni acepta `notifyMatches`; solo devuelve matches para la UI.
+`checkPotentialMatches` puede enviar notificaciones e iniciar transacciones de match si la mejor coincidencia tiene un score >= 0.80 y se proporciona el identificador del post de origen (en `id`, `postId` o `post_id`). En caso contrario, solo devuelve las sugerencias ordenadas para la UI.
 
 ## Payload de match
 
