@@ -29,7 +29,7 @@ Nuevo post en /posts
   -> saveInAppNotification + sendNotificationToUser
 ```
 
-`checkPotentialMatches` devuelve sugerencias al cliente y no envia notificaciones en el codigo actual.
+`checkPotentialMatches` devuelve sugerencias al cliente. Si se proporciona el ID del post de origen y la puntuación de la mejor coincidencia es superior o igual a `0.80`, se realiza una transacción atómica que actualiza el estado de ambos posts a `'matched'` y envía notificaciones push e in-app a ambos usuarios. Las notificaciones automáticas de matches también se disparan desde `onPostCreated` al crearse una nueva publicación compatible.
 
 ## Pruebas
 
