@@ -27,6 +27,20 @@ export function getHaversineDistance(lat1: number, lon1: number, lat2: number, l
 }
 
 /**
+ * Calcula la distancia exacta en metros entre dos coordenadas geográficas utilizando la fórmula de Haversine.
+ * 
+ * @param lat1 - Latitud del primer punto.
+ * @param lon1 - Longitud del primer punto.
+ * @param lat2 - Latitud del segundo punto.
+ * @param lon2 - Longitud del segundo punto.
+ * 
+ * @returns La distancia lineal calculada en metros.
+ */
+export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    return getHaversineDistance(lat1, lon1, lat2, lon2);
+}
+
+/**
  * Evalúa si una coordenada geográfica se ubica en el interior de una región poligonal cerrada usando el algoritmo de Ray Casting.
  * 
  * El algoritmo proyecta un rayo horizontal desde el punto de interés y cuenta cuántas aristas interseca.

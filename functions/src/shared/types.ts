@@ -85,6 +85,9 @@ export interface FeedFilterPayload {
     user_lat?: number;
     user_lng?: number;
     sort_by?: "date" | "distance";
+    latitude?: number;
+    longitude?: number;
+    sortBy?: "recent" | "distance";
 }
 
 
