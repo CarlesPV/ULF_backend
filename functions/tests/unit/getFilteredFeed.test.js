@@ -59,7 +59,7 @@ describe("getFilteredFeed search", () => {
             data: { center_id: "uab", type: "lost" }
         });
 
-        expect(result).toEqual({ feed: [] });
+        expect(result).toEqual({ feed: [], posts: [] });
     });
 
     test("should filter by category, sort by date, and limit results", async () => {
