@@ -221,6 +221,66 @@ describe("integration: Realtime Database rules", () => {
     await expect(firebaseDb.set(postRef, validDescPost)).resolves.toBeUndefined();
   });
 
+  test("users can create posts only with active status", async () => {
+    await createVerifiedUser({
+      uid: "owner-1",
+      email: "owner@uab.cat"
+    });
+    const client = await signInClient(createClientApp(), "owner@uab.cat");
+
+    await expect(firebaseDb.set(
+      firebaseDb.ref(client.database, "posts/post-active-create"),
+      validPost("post-active-create", "owner-1")
+    )).resolves.toBeUndefined();
+
+    const rejectedPost = validPost("post-rejected-create", "owner-1");
+    rejectedPost.status = "rejected";
+
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, "posts/post-rejected-create"),
+      rejectedPost
+    ));
+  });
+
+  test("users cannot change post status directly but can edit fields when status is unchanged", async () => {
+    await createVerifiedUser({
+      uid: "owner-1",
+      email: "owner@uab.cat"
+    });
+    await adminDb().ref("posts/post-status-test").set(validPost("post-status-test", "owner-1"));
+    const client = await signInClient(createClientApp(), "owner@uab.cat");
+
+    const statusChangedPost = validPost("post-status-test", "owner-1");
+    statusChangedPost.status = "returned";
+    statusChangedPost.updated_at = Date.now();
+
+    await expectPermissionDenied(firebaseDb.set(
+      firebaseDb.ref(client.database, "posts/post-status-test"),
+      statusChangedPost
+    ));
+
+    const titleChangedPost = validPost("post-status-test", "owner-1");
+    titleChangedPost.title = "Mochila roja actualizada";
+    titleChangedPost.updated_at = Date.now();
+
+    await expect(firebaseDb.set(
+      firebaseDb.ref(client.database, "posts/post-status-test"),
+      titleChangedPost
+    )).resolves.toBeUndefined();
+  });
+
+  test("Admin SDK can still mark posts as rejected for backend triggers", async () => {
+    await adminDb().ref("posts/post-admin-rejected").set(validPost("post-admin-rejected", "owner-1"));
+
+    await expect(adminDb().ref("posts/post-admin-rejected").update({
+      status: "rejected",
+      updated_at: Date.now()
+    })).resolves.toBeUndefined();
+
+    const snap = await adminDb().ref("posts/post-admin-rejected/status").once("value");
+    expect(snap.val()).toBe("rejected");
+  });
+
   test("users can write and validate their legal node", async () => {
     const userUid = "user-legal-1";
     await createVerifiedUser({
