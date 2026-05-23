@@ -42,7 +42,7 @@ describe("getFilteredFeed search", () => {
 
         await expect(getFilteredFeed({
             auth: { token: { email_verified: true } },
-            data: { center_id: "uab" }
+            data: { type: "lost" }
         })).rejects.toMatchObject({ code: "invalid-argument" });
     });
 
@@ -59,7 +59,7 @@ describe("getFilteredFeed search", () => {
             data: { center_id: "uab", type: "lost" }
         });
 
-        expect(result).toEqual({ feed: [] });
+        expect(result).toEqual({ feed: [], posts: [] });
     });
 
     test("should filter by category, sort by date, and limit results", async () => {
@@ -240,5 +240,110 @@ describe("getFilteredFeed search", () => {
 
         expect(result.feed.map((post) => post.id)).toEqual(["near", "far"]);
         expect(result.feed[0].distance_km).toBeLessThan(result.feed[1].distance_km);
+    });
+
+    test("should reject request with error_gps_required if sortBy is distance but latitude or longitude is missing", async () => {
+        setupCallableTestEnv();
+        const { getFilteredFeed } = require("../../lib/feed/getFilteredFeed");
+
+        await expect(getFilteredFeed({
+            auth: { token: { email_verified: true } },
+            data: {
+                center_id: "uab",
+                type: "lost",
+                sortBy: "distance"
+            }
+        })).rejects.toMatchObject({
+            code: "invalid-argument",
+            message: "error_gps_required"
+        });
+    });
+
+    test("should sort by distance using calculateDistance when sortBy is distance and latitude/longitude are provided", async () => {
+        setupCallableTestEnv({
+            onceByPath: {
+                "active_posts/uab/lost": { "near": 1000, "far": 1100, "no-coords": 1200 },
+                "posts/near": {
+                    id: "near",
+                    center_id: "uab",
+                    type: "lost",
+                    status: "active",
+                    is_deleted: false,
+                    created_at: 1000,
+                    coords: { lat: 41.5001, lng: 2.1001 }
+                },
+                "posts/far": {
+                    id: "far",
+                    center_id: "uab",
+                    type: "lost",
+                    status: "active",
+                    is_deleted: false,
+                    created_at: 1100,
+                    coords: { lat: 41.52, lng: 2.13 }
+                },
+                "posts/no-coords": {
+                    id: "no-coords",
+                    center_id: "uab",
+                    type: "lost",
+                    status: "active",
+                    is_deleted: false,
+                    created_at: 1200
+                }
+            }
+        });
+        const { getFilteredFeed } = require("../../lib/feed/getFilteredFeed");
+
+        const result = await getFilteredFeed({
+            auth: { token: { email_verified: true } },
+            data: {
+                center_id: "uab",
+                type: "lost",
+                sortBy: "distance",
+                latitude: 41.5,
+                longitude: 2.1
+            }
+        });
+
+        expect(result.feed.map((post) => post.id)).toEqual(["near", "far"]);
+        expect(result.feed[0].distance).toBeDefined();
+        expect(result.feed[1].distance).toBeDefined();
+        expect(result.feed[0].distance).toBeLessThan(result.feed[1].distance);
+    });
+
+    test("should fetch and merge both lost and found posts when type is not specified", async () => {
+        setupCallableTestEnv({
+            onceByPath: {
+                "active_posts/uab/lost": { "post-lost-1": 1000 },
+                "active_posts/uab/found": { "post-found-1": 1100 },
+                "posts/post-lost-1": {
+                    id: "post-lost-1",
+                    center_id: "uab",
+                    type: "lost",
+                    status: "active",
+                    is_deleted: false,
+                    created_at: 1000
+                },
+                "posts/post-found-1": {
+                    id: "post-found-1",
+                    center_id: "uab",
+                    type: "found",
+                    status: "active",
+                    is_deleted: false,
+                    created_at: 1100
+                }
+            }
+        });
+        const { getFilteredFeed } = require("../../lib/feed/getFilteredFeed");
+
+        const result = await getFilteredFeed({
+            auth: { token: { email_verified: true } },
+            data: {
+                center_id: "uab"
+            }
+        });
+
+        expect(result.feed).toHaveLength(2);
+        expect(result.feed[0].id).toBe("post-found-1");
+        expect(result.feed[1].id).toBe("post-lost-1");
     });
 });

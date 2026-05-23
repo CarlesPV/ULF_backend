@@ -78,13 +78,16 @@ export interface UserProfile {
 
 export interface FeedFilterPayload {
     center_id: string;
-    type: "lost" | "found";
+    type?: "lost" | "found";
     category?: Category;
     search_term?: string;
     max_results?: number;
     user_lat?: number;
     user_lng?: number;
     sort_by?: "date" | "distance";
+    latitude?: number;
+    longitude?: number;
+    sortBy?: "recent" | "distance";
 }
 
 
