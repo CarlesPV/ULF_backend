@@ -48,7 +48,7 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     const data = request.data as FeedFilterPayload;
     const { center_id, type, category, search_term, max_results = 50, user_lat, user_lng, sort_by, latitude, longitude, sortBy } = data;
 
-    if (!center_id || !type) {
+    if (!center_id) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
 
@@ -58,16 +58,30 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         }
     }
 
-    // Consultar las claves de publicaciones activas desde el índice secundario de centros filtrado por tipo
-    const activeKeysSnap = await admin.database()
-        .ref(`active_posts/${center_id}/${type}`)
-        .orderByValue()
-        .once("value");
+    // Consultar las claves de publicaciones activas desde el índice secundario de centros de forma condicional
+    let postIds: string[] = [];
 
-    if (!activeKeysSnap.exists()) return { feed: [] };
+    if (type) {
+        const activeKeysSnap = await admin.database()
+            .ref(`active_posts/${center_id}/${type}`)
+            .orderByValue()
+            .once("value");
+        if (activeKeysSnap.exists() && activeKeysSnap.val()) {
+            postIds = Object.keys(activeKeysSnap.val());
+        }
+    } else {
+        const [lostSnap, foundSnap] = await Promise.all([
+            admin.database().ref(`active_posts/${center_id}/lost`).orderByValue().once("value"),
+            admin.database().ref(`active_posts/${center_id}/found`).orderByValue().once("value")
+        ]);
+        const lostIds = (lostSnap.exists() && lostSnap.val()) ? Object.keys(lostSnap.val()) : [];
+        const foundIds = (foundSnap.exists() && foundSnap.val()) ? Object.keys(foundSnap.val()) : [];
+        postIds = [...lostIds, ...foundIds];
+    }
+
+    if (postIds.length === 0) return { feed: [] };
 
     // Recuperar concurrently el detalle de cada post empleando las claves indexadas
-    const postIds = Object.keys(activeKeysSnap.val());
     const postFetches = postIds.map(id =>
         admin.database().ref(`posts/${id}`).once("value")
     );
@@ -92,7 +106,7 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
         if (!snap.exists()) continue;
         const post = snap.val();
 
-        if (post.type !== type) continue;
+        if (type && post.type !== type) continue;
         if (post.status !== "active" && post.status !== "matched") continue;
         if (category && post.category !== category) continue;
 
