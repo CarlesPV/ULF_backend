@@ -29,20 +29,31 @@ export const purgeUnverifiedAccounts = onSchedule({
         do {
             // Listar usuarios en lotes de hasta 1000 para optimizar el consumo de memoria
             const listUsersResult = await auth.listUsers(1000, nextPageToken);
+            const uidsToDelete: string[] = [];
 
             for (const userRecord of listUsersResult.users) {
                 const creationTime = new Date(userRecord.metadata.creationTime).getTime();
                 const isExpired = (now - creationTime) > UNVERIFIED_TTL;
 
                 if (!userRecord.emailVerified && isExpired) {
-                    // Eliminar al usuario del sistema de autenticación de Firebase
-                    await auth.deleteUser(userRecord.uid);
-                    
-                    // Eliminar de forma sincronizada el registro del perfil en Realtime Database
-                    await db.ref(`users/${userRecord.uid}`).remove();
-                    deletedCount++;
+                    uidsToDelete.push(userRecord.uid);
                 }
             }
+
+            if (uidsToDelete.length > 0) {
+                // Eliminar a los usuarios del sistema de autenticación de Firebase en un solo lote (límite 1000 por llamada)
+                await auth.deleteUsers(uidsToDelete);
+
+                // Eliminar de forma sincronizada los registros de perfil en Realtime Database mediante una actualización multirruta
+                const updates: { [key: string]: null } = {};
+                for (const uid of uidsToDelete) {
+                    updates[`users/${uid}`] = null;
+                }
+                await db.ref().update(updates);
+
+                deletedCount += uidsToDelete.length;
+            }
+
             nextPageToken = listUsersResult.pageToken;
         } while (nextPageToken);
 
