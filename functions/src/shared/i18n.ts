@@ -37,14 +37,14 @@ export const I18N_STRINGS = {
             ca: "Algú ha publicat un objecte que podria ser el teu."
         },
         match_found_title: {
-            es: "¡Coincidencia encontrada!",
-            en: "Match found!",
-            ca: "¡Coincidència trobada!"
+            es: "¡Posible coincidencia!",
+            en: "Possible match!",
+            ca: "Possible coincidència!"
         },
         match_found_body: {
-            es: "Se encontró un objeto que podría coincidir con tu búsqueda.",
-            en: "An item was found that might match your search.",
-            ca: "Es va trobar un objecte que podria coincidir amb la teva recerca."
+            es: "Hemos encontrado un objeto que coincide en un 80% o más con tu publicación.",
+            en: "We found an item that matches your post by 80% or more.",
+            ca: "Hem trobat un objecte que coincideix en un 80% o més amb la teva publicació."
         }
     },
     statuses: {
@@ -62,6 +62,11 @@ export const I18N_STRINGS = {
             es: "Devuelto",
             ca: "Retornat",
             en: "Returned"
+        },
+        rejected: {
+            es: "Rechazado",
+            ca: "Rebutjat",
+            en: "Rejected"
         }
     },
     // Códigos de error estandarizados que se transmiten al cliente para traducción dinámica en la interfaz de usuario

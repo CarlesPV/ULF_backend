@@ -48,7 +48,7 @@ export const onPostCreated = onValueCreated("/posts/{postId}", async (event: any
     const tasks: Promise<any>[] = [];
 
     // Indexar el post bajo la lista de posts activos del centro
-    if (post.status === "active" && post.is_deleted === false) {
+    if ((post.status === "active" || post.status === "matched") && post.is_deleted === false) {
         tasks.push(
             admin.database()
                 .ref(`active_posts/${post.center_id}/${event.params.postId}`)
@@ -128,7 +128,7 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
     // Mantener el índice de publicaciones activas sincronizado para el feed de búsqueda
     const indexRef = admin.database().ref(`active_posts/${after.center_id}/${event.params.postId}`);
     const typeIndexRef = admin.database().ref(`active_posts/${after.center_id}/${after.type}/${event.params.postId}`);
-    const isActive = after.status === "active" && after.is_deleted === false;
+    const isActive = (after.status === "active" || after.status === "matched") && after.is_deleted === false;
 
     if (isActive) {
         tasks.push(indexRef.set(after.created_at));
@@ -154,6 +154,21 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
 
     if (titleChanged || imageChanged) {
         tasks.push(syncPostMetadataToChats(event.params.postId, after.title, after.postImageUrl || after.imageUrl));
+    }
+
+    // Inhabilitación de chats en cascada por cambio de estado a devuelto o eliminado
+    const newlyDeleted = after.is_deleted === true && (!before || before.is_deleted !== true);
+    const newlyResolved = (after.status === "returned" || after.status === "resolved") && (!before || (before.status !== "returned" && before.status !== "resolved"));
+
+    const wasDisabled = before?.is_deleted === true || before?.status === "returned" || before?.status === "resolved";
+    const isNowActive = after.is_deleted === false && (after.status === "active" || after.status === "matched");
+
+    if (newlyDeleted) {
+        tasks.push(disableChatsForPost(event.params.postId, "deleted"));
+    } else if (newlyResolved) {
+        tasks.push(disableChatsForPost(event.params.postId, "resolved"));
+    } else if (wasDisabled && isNowActive) {
+        tasks.push(enableChatsForPost(event.params.postId));
     }
 
     // Gestión de archivos huérfanos: Si la URL de imagen ha cambiado, eliminamos la anterior física de Storage
@@ -215,6 +230,55 @@ async function syncPostMetadataToChats(postId: string, title: string, imageUrl: 
 }
 
 /**
+ * Inhabilita todos los chats asociados a una publicación.
+ *
+ * @param postId - Identificador único de la publicación.
+ * @param reason - Razón de la inhabilitación ('deleted' o 'resolved').
+ */
+async function disableChatsForPost(postId: string, reason: "deleted" | "resolved"): Promise<void> {
+    const chatsQuery = await admin.database()
+        .ref("chats")
+        .orderByChild("post_id")
+        .equalTo(postId)
+        .once("value");
+
+    if (!chatsQuery.exists()) return;
+
+    const updates: { [key: string]: any } = {};
+    chatsQuery.forEach((chatSnapshot) => {
+        const chatId = chatSnapshot.key;
+        updates[`chats/${chatId}/isActive`] = false;
+        updates[`chats/${chatId}/disabledReason`] = reason;
+    });
+
+    await admin.database().ref().update(updates);
+}
+
+/**
+ * Habilita todos los chats asociados a una publicación.
+ *
+ * @param postId - Identificador único de la publicación.
+ */
+async function enableChatsForPost(postId: string): Promise<void> {
+    const chatsQuery = await admin.database()
+        .ref("chats")
+        .orderByChild("post_id")
+        .equalTo(postId)
+        .once("value");
+
+    if (!chatsQuery.exists()) return;
+
+    const updates: { [key: string]: any } = {};
+    chatsQuery.forEach((chatSnapshot) => {
+        const chatId = chatSnapshot.key;
+        updates[`chats/${chatId}/isActive`] = true;
+        updates[`chats/${chatId}/disabledReason`] = null;
+    });
+
+    await admin.database().ref().update(updates);
+}
+
+/**
  * Trigger de Realtime Database v2 que se activa al eliminarse físicamente una publicación en `/posts/{postId}`.
  *
  * Elimina de manera definitiva la clave del post de la ruta `/active_posts/{center_id}/{postId}` para evitar
@@ -229,7 +293,8 @@ export const onPostDeleted = onValueDeleted("/posts/{postId}", async (event: any
     const tasks: Promise<any>[] = [
         admin.database()
             .ref(`active_posts/${before.center_id}/${event.params.postId}`)
-            .remove()
+            .remove(),
+        disableChatsForPost(event.params.postId, "deleted")
     ];
 
     if (before.type) {

@@ -2,13 +2,15 @@ import * as functions from "firebase-functions";
 import { admin } from "../shared/firebase";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { I18N_STRINGS } from "../shared/i18n";
+import { notifyMatchFound } from "../shared/notifications";
 
 const SCORE_THRESHOLDS = {
-    MIN_MATCH_SCORE: 0.5,
+    MIN_MATCH_SCORE: 0.80,
     TITLE_MAX: 1.0,
     DESCRIPTION_MAX: 0.5,
     IMAGE_BONUS: 0.25,
     DATE_MAX: 0.2,
+    CATEGORY_BONUS: 0.1,
 };
 
 const STOP_WORDS = new Set([
@@ -51,6 +53,7 @@ function dateProximityScore(ts1: number, ts2: number, maxScore: number): number 
 
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const { center_id, category, type, description, title, location, postImageUrl, created_at } = request.data;
+    const sourcePostId = request.data.id || request.data.postId || request.data.post_id;
 
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
@@ -98,7 +101,10 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         const post = snap.val();
 
         // Filtros obligatorios (hard filters) — no contribuyen al score
-        if (post.type !== targetType || post.category !== category || post.is_deleted) continue;
+        if (post.type !== targetType || post.is_deleted) continue;
+
+        // Excluir publicaciones del propio usuario
+        if (post.user_id === request.auth.uid) continue;
 
         let score = 0;
 
@@ -123,11 +129,17 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         const targetTs = typeof post.created_at === "number" ? post.created_at : (post.date || 0);
         score += dateProximityScore(sourceTs, targetTs, SCORE_THRESHOLDS.DATE_MAX);
 
+        // 5. CATEGORÍA — bonus por coincidencia de categoría
+        if (post.category === category) {
+            score += SCORE_THRESHOLDS.CATEGORY_BONUS;
+        }
+
         // Filtrar por score mínimo
         if (score < SCORE_THRESHOLDS.MIN_MATCH_SCORE) continue;
 
         potentialMatches.push({
             id: post.id,
+            user_id: post.user_id,
             title: post.title,
             description: post.description,
             score: Math.round(score * 1000) / 1000,
@@ -137,13 +149,61 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         });
     }
 
+    const sortedMatches = potentialMatches.sort((a, b) => {
+        if (Math.abs(b.score - a.score) > 0.001) return b.score - a.score;
+        return (b.created_at || 0) - (a.created_at || 0);
+    });
+
+    const bestMatch = sortedMatches[0];
+    if (bestMatch && bestMatch.score >= 0.80 && sourcePostId) {
+        try {
+            const updates: { [key: string]: any } = {};
+            updates[`posts/${sourcePostId}/status`] = "matched";
+            updates[`posts/${sourcePostId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+            updates[`posts/${bestMatch.id}/status`] = "matched";
+            updates[`posts/${bestMatch.id}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+
+            await admin.database().ref().update(updates);
+            console.log(`Smart Matcher exitoso: posts ${sourcePostId} y ${bestMatch.id} actualizados a 'matched'`);
+
+            // Disparar notificaciones a ambos usuarios
+            const targetUserId = bestMatch.user_id;
+            const targetTitle = bestMatch.title || "Objeto";
+            const targetDesc = bestMatch.description || "";
+            const targetPhotoUrl = bestMatch.postImageUrl || "";
+
+            await Promise.all([
+                notifyMatchFound(
+                    targetUserId,
+                    {
+                        id: sourcePostId,
+                        title: title || "Objeto",
+                        description: description || "",
+                        photo_url: postImageUrl || request.data.imageUrl || request.data.photo_url || ""
+                    },
+                    bestMatch.score
+                ),
+                notifyMatchFound(
+                    request.auth.uid,
+                    {
+                        id: bestMatch.id,
+                        title: targetTitle,
+                        description: targetDesc,
+                        photo_url: targetPhotoUrl
+                    },
+                    bestMatch.score
+                )
+            ]).catch(err => {
+                console.error("Error al enviar notificaciones de match:", err);
+            });
+        } catch (error) {
+            console.error("Error en transacción atómica de matching:", error);
+        }
+    }
+
     return {
-        matches: potentialMatches
-            .sort((a, b) => {
-                if (Math.abs(b.score - a.score) > 0.001) return b.score - a.score;
-                return (b.created_at || 0) - (a.created_at || 0);
-            })
+        matches: sortedMatches
             .slice(0, 5)
-            .map(({ created_at, ...rest }) => rest)
+            .map(({ created_at, user_id, ...rest }) => rest)
     };
 });

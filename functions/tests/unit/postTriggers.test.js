@@ -107,7 +107,7 @@ describe("post triggers", () => {
     await onPostCreated(createdEvent({
       center_id: "uab",
       coords: validCoords,
-      status: "matched",
+      status: "returned",
       is_deleted: false,
       created_at: 123
     }));
@@ -410,6 +410,142 @@ describe("post triggers", () => {
       "chats/chat-1/postImageUrl": "new.jpg",
       "chats/chat-2/postTitle": "Nuevo título",
       "chats/chat-2/postImageUrl": "new.jpg"
+    });
+  });
+
+  test("onPostUpdated disables chats in cascade when post status changes to returned", async () => {
+    const env = setupCallableTestEnv({
+      onceByQuery: {
+        "chats|orderByChild:post_id|equalTo:post-1": {
+          "chat-1": { post_id: "post-1", post_title: "Objeto" }
+        }
+      }
+    });
+
+    const { onPostUpdated } = require("../../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ status: "active", is_deleted: false, center_id: "uab" }) },
+        after: { val: () => ({ status: "returned", is_deleted: false, center_id: "uab" }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateOp.value).toEqual({
+      "chats/chat-1/isActive": false,
+      "chats/chat-1/disabledReason": "resolved"
+    });
+  });
+
+  test("onPostUpdated disables chats in cascade when post is soft deleted", async () => {
+    const env = setupCallableTestEnv({
+      onceByQuery: {
+        "chats|orderByChild:post_id|equalTo:post-1": {
+          "chat-1": { post_id: "post-1", post_title: "Objeto" }
+        }
+      }
+    });
+
+    const { onPostUpdated } = require("../../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ status: "active", is_deleted: false, center_id: "uab" }) },
+        after: { val: () => ({ status: "active", is_deleted: true, center_id: "uab" }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateOp.value).toEqual({
+      "chats/chat-1/isActive": false,
+      "chats/chat-1/disabledReason": "deleted"
+    });
+  });
+
+  test("onPostUpdated enables chats in cascade when post status goes from returned to active", async () => {
+    const env = setupCallableTestEnv({
+      onceByQuery: {
+        "chats|orderByChild:post_id|equalTo:post-1": {
+          "chat-1": { post_id: "post-1", post_title: "Objeto", isActive: false, disabledReason: "resolved" }
+        }
+      }
+    });
+
+    const { onPostUpdated } = require("../../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ status: "returned", is_deleted: false, center_id: "uab" }) },
+        after: { val: () => ({ status: "active", is_deleted: false, center_id: "uab", created_at: 123 }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateOp.value).toEqual({
+      "chats/chat-1/isActive": true,
+      "chats/chat-1/disabledReason": null
+    });
+  });
+
+  test("onPostUpdated enables chats in cascade when post is undeleted (soft delete reverted)", async () => {
+    const env = setupCallableTestEnv({
+      onceByQuery: {
+        "chats|orderByChild:post_id|equalTo:post-1": {
+          "chat-1": { post_id: "post-1", post_title: "Objeto", isActive: false, disabledReason: "deleted" }
+        }
+      }
+    });
+
+    const { onPostUpdated } = require("../../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ status: "active", is_deleted: true, center_id: "uab" }) },
+        after: { val: () => ({ status: "active", is_deleted: false, center_id: "uab", created_at: 123 }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateOp.value).toEqual({
+      "chats/chat-1/isActive": true,
+      "chats/chat-1/disabledReason": null
+    });
+  });
+
+
+  test("onPostDeleted disables chats in cascade when post is physically deleted", async () => {
+    const env = setupCallableTestEnv({
+      onceByQuery: {
+        "chats|orderByChild:post_id|equalTo:post-1": {
+          "chat-1": { post_id: "post-1", post_title: "Objeto" }
+        }
+      }
+    });
+
+    const { onPostDeleted } = require("../../lib/posts/postTriggers");
+
+    await onPostDeleted(deletedEvent({
+      center_id: "uab",
+      type: "lost"
+    }, "post-1"));
+
+    const updateOp = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateOp.value).toEqual({
+      "chats/chat-1/isActive": false,
+      "chats/chat-1/disabledReason": "deleted"
     });
   });
 

@@ -130,8 +130,8 @@ describe("Match Notification System", () => {
         expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
             token: "token-ca",
             notification: {
-                title: "¡Coincidència trobada!",
-                body: "Es va trobar un objecte que podria coincidir amb la teva recerca."
+                title: "Possible coincidència!",
+                body: "Hem trobat un objecte que coincideix en un 80% o més amb la teva publicació."
             },
             data: expect.objectContaining({
                 type: "match",
@@ -202,8 +202,8 @@ describe("Match Notification System", () => {
         expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
             token: "token-fallback",
             notification: {
-                title: "¡Coincidencia encontrada!", // Spanish fallback title
-                body: "Se encontró un objeto que podría coincidir con tu búsqueda."
+                title: "¡Posible coincidencia!", // Spanish fallback title
+                body: "Hemos encontrado un objeto que coincide en un 80% o más con tu publicación."
             }
         }));
     });
@@ -233,8 +233,8 @@ describe("Match Notification System", () => {
         expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
             token: "token-top-lang",
             notification: {
-                title: "¡Coincidència trobada!",
-                body: "Es va trobar un objecte que podria coincidir amb la teva recerca."
+                title: "Possible coincidència!",
+                body: "Hem trobat un objecte que coincideix en un 80% o més amb la teva publicació."
             },
             data: expect.objectContaining({
                 type: "match",
