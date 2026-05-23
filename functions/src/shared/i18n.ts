@@ -86,10 +86,18 @@ export const I18N_STRINGS = {
         invalid_profile_data: "error_invalid_profile_data",
         coords_required: "error_coords_required",
         coords_invalid: "error_coords_invalid",
+        gps_required: "error_gps_required",
         category_not_allowed: "error_category_not_allowed",
         center_not_found: "error_center_not_found",
         center_config_error: "error_center_config_error",
         db_write_error: "error_db_write_error"
+    },
+    error_translations: {
+        error_gps_required: {
+            es: "Coordenadas GPS requeridas para esta acción",
+            ca: "Coordenades GPS requerides per a aquesta acció",
+            en: "GPS coordinates required for this action"
+        }
     }
 };
 
@@ -122,6 +130,22 @@ export function getStatusString(
     lang: SupportedLanguage = "en"
 ): string {
     const stringSet = I18N_STRINGS.statuses[key];
+    return (stringSet as any)[lang] || (stringSet as any)["en"];
+}
+
+/**
+ * Obtiene y resuelve la cadena localizada para un error en base al idioma preferido del destinatario.
+ * 
+ * @param key - Clave del error en el diccionario de traducciones.
+ * @param lang - Código del idioma seleccionado ("es", "en", "ca"). Por defecto se utiliza "en".
+ * 
+ * @returns La cadena de texto traducida o el fallback a inglés.
+ */
+export function getErrorString(
+    key: keyof typeof I18N_STRINGS.error_translations,
+    lang: SupportedLanguage = "en"
+): string {
+    const stringSet = I18N_STRINGS.error_translations[key];
     return (stringSet as any)[lang] || (stringSet as any)["en"];
 }
 

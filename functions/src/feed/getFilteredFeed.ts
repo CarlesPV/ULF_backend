@@ -4,6 +4,7 @@ import { admin } from "../shared/firebase";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { FeedFilterPayload } from "../shared/types";
 import { I18N_STRINGS } from "../shared/i18n";
+import { calculateDistance } from "../shared/utils";
 
 /**
  * Obtiene el listado filtrado de posts (objetos perdidos/encontrados) activos para un centro.
@@ -45,10 +46,16 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     }
 
     const data = request.data as FeedFilterPayload;
-    const { center_id, type, category, search_term, max_results = 50, user_lat, user_lng, sort_by } = data;
+    const { center_id, type, category, search_term, max_results = 50, user_lat, user_lng, sort_by, latitude, longitude, sortBy } = data;
 
     if (!center_id || !type) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
+    }
+
+    if (sortBy === "distance") {
+        if (latitude === undefined || longitude === undefined || typeof latitude !== "number" || typeof longitude !== "number" || isNaN(latitude) || isNaN(longitude)) {
+            throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.gps_required);
+        }
     }
 
     // Consultar las claves de publicaciones activas desde el índice secundario de centros filtrado por tipo
@@ -108,8 +115,30 @@ export const getFilteredFeed = functions.https.onCall(async (request: any) => {
     // Organizar el feed en base al método especificado por el cliente (geográfico o cronológico)
     let feed: any[] = [];
 
-    if (sort_by === "distance" && user_lat !== undefined && user_lng !== undefined) {
-        // Ordenación de posts basada en distancia geográfica (GeoFire)
+    if (sortBy === "distance") {
+        const postsWithDistance = filteredPosts
+            .map((post: any) => {
+                if (!post.coords || post.coords.lat === undefined || post.coords.lng === undefined) {
+                    return null;
+                }
+                const dist = calculateDistance(
+                    latitude!,
+                    longitude!,
+                    post.coords.lat,
+                    post.coords.lng
+                );
+                return {
+                    ...post,
+                    distance: dist
+                };
+            })
+            .filter((post: any) => post !== null)
+            .sort((a: any, b: any) => a.distance - b.distance)
+            .slice(0, max_results);
+
+        feed = postsWithDistance;
+    } else if (sort_by === "distance" && user_lat !== undefined && user_lng !== undefined) {
+        // Ordenación de posts basada en distancia geográfica (GeoFire) para compatibilidad
         const postsWithDistance = filteredPosts
             .map((post: any) => {
                 if (!post.coords || post.coords.lat === undefined || post.coords.lng === undefined) {
