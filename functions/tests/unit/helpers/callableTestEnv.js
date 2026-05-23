@@ -55,6 +55,7 @@ function setupCallableTestEnv(options = {}) {
   const authApi = {
     createUser: jest.fn(),
     deleteUser: jest.fn(),
+    deleteUsers: jest.fn(),
     listUsers: jest.fn()
   };
 
@@ -68,6 +69,12 @@ function setupCallableTestEnv(options = {}) {
     authApi.deleteUser.mockRejectedValue(options.deleteUserRejects);
   } else {
     authApi.deleteUser.mockResolvedValue(undefined);
+  }
+
+  if (options.deleteUsersRejects) {
+    authApi.deleteUsers.mockRejectedValue(options.deleteUsersRejects);
+  } else {
+    authApi.deleteUsers.mockResolvedValue(undefined);
   }
 
   if (options.listUsersRejects) {
