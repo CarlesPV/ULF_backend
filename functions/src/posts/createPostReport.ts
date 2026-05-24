@@ -58,7 +58,12 @@ export const createPostReport = functions.https.onCall(async (request) => {
     const data = request.data as PostReportPayload;
     const uid = request.auth.uid;
 
-    const { center_id, type, title, description, category, lat, lng, photo_path } = data;
+    const { center_id, type, title, description, category, photo_path } = data;
+    const imageUrl = (data as any).imageUrl;
+    const postImageUrl = (data as any).postImageUrl;
+
+    const lat = data.lat !== undefined && data.lat !== null ? data.lat : (data as any).coords?.lat;
+    const lng = data.lng !== undefined && data.lng !== null ? data.lng : (data as any).coords?.lng;
 
     const allowedCategories = ["accessories", "clothes", "devices", "wallets", "keys", "bags", "study", "others"];
     
@@ -68,6 +73,14 @@ export const createPostReport = functions.https.onCall(async (request) => {
     }
 
     if (type !== "lost" && type !== "found") {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+    }
+
+    if (imageUrl !== undefined && imageUrl !== null && typeof imageUrl !== "string") {
+        throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+    }
+
+    if (postImageUrl !== undefined && postImageUrl !== null && typeof postImageUrl !== "string") {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
     }
 
@@ -121,9 +134,23 @@ export const createPostReport = functions.https.onCall(async (request) => {
     // Generar codificación Geohash espacial para optimizar consultas espaciales futuras en el Feed
     const geohash = geofire.geohashForLocation([lat, lng]);
 
+    const SAFE_POST_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
     const postsRef = admin.database().ref("posts");
-    const newPostRef = postsRef.push();
-    const postId = newPostRef.key;
+    
+    let postId = (data as any).id;
+    if (postId !== undefined && postId !== null) {
+        if (typeof postId !== "string" || postId.trim().length === 0 || !SAFE_POST_ID_PATTERN.test(postId.trim())) {
+            throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+        }
+        postId = postId.trim();
+    } else {
+        postId = postsRef.push().key;
+    }
+
+    if (!postId) {
+        throw new functions.https.HttpsError("internal", I18N_STRINGS.errors.db_write_error);
+    }
+    const newPostRef = admin.database().ref(`posts/${postId}`);
 
     const payload: any = {
         id: postId,
@@ -139,6 +166,8 @@ export const createPostReport = functions.https.onCall(async (request) => {
             geohash: geohash
         },
         photo_path: photo_path || "",
+        imageUrl: imageUrl || "",
+        postImageUrl: postImageUrl || "",
         created_at: admin.database.ServerValue.TIMESTAMP,
         updated_at: admin.database.ServerValue.TIMESTAMP,
         is_deleted: false

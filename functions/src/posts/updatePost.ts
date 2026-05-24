@@ -53,7 +53,7 @@ export const updatePost = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unauthorized);
     }
 
-    const allowedKeys = ["title", "description", "category", "coords", "imageUrl", "postImageUrl", "photo_path", "type", "center_id"];
+    const allowedKeys = ["title", "description", "category", "coords", "imageUrl", "postImageUrl", "photo_path", "type", "center_id", "status"];
     const updatePayload: any = {};
 
     for (const key of Object.keys(updates)) {
@@ -82,6 +82,14 @@ export const updatePost = functions.https.onCall(async (request) => {
             throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.category_not_allowed);
         }
         updatePayload.category = updates.category;
+    }
+
+    if (updates.status !== undefined) {
+        const allowedStatuses = ["active", "matched", "returned", "rejected"];
+        if (typeof updates.status !== "string" || !allowedStatuses.includes(updates.status)) {
+            throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.invalid_argument);
+        }
+        updatePayload.status = updates.status;
     }
 
     const centerId = updates.center_id !== undefined ? updates.center_id : post.center_id;
