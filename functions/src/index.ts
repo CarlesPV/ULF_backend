@@ -37,8 +37,9 @@
  *    - `onUserProfileUpdated`: Trigger reactivo para propagar cambios de nombre e imagen de avatar en chats activos desnormalizados.
  */
 
+import { createPostReport } from "./posts/createPostReport";
+export { createPostReport };
 export { secureUniversityRegistration } from "./auth/secureUniversityRegistration";
-export { createPostReport } from "./posts/createPostReport";
 export { onPostCreated, onPostUpdated, onPostDeleted } from "./posts/postTriggers";
 export { updatePostStatus } from "./posts/updatePostStatus";
 export { updatePost } from "./posts/updatePost";
@@ -55,4 +56,7 @@ export { getOrCreateChat } from "./chats/getOrCreateChat";
 export { onImageUploaded } from "./storage/onImageUploaded";
 export { onProfileImageUploaded } from "./storage/onProfileImageUploaded";
 export { onUserProfileUpdated } from "./users/onUserProfileUpdated";
+
+export const createPost = createPostReport;
+
 
