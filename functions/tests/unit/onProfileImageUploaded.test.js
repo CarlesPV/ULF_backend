@@ -1,5 +1,22 @@
 const { setupCallableTestEnv } = require("./helpers/callableTestEnv");
 
+// Mock sharp at top level
+jest.mock("sharp", () => {
+    const mSharp = {
+        resize: jest.fn().mockReturnThis(),
+        toFormat: jest.fn().mockReturnThis(),
+        toFile: jest.fn().mockResolvedValue({}),
+    };
+    return jest.fn(() => mSharp);
+});
+
+// Mock fs safely
+jest.mock("fs", () => ({
+    ...jest.requireActual("fs"),
+    existsSync: jest.fn().mockReturnValue(true),
+    unlinkSync: jest.fn(),
+}));
+
 describe("onProfileImageUploaded trigger", () => {
     let env;
     let bucketMock;
@@ -10,11 +27,12 @@ describe("onProfileImageUploaded trigger", () => {
         env = setupCallableTestEnv();
 
         fileMock = {
-            setMetadata: jest.fn().mockResolvedValue([]),
+            download: jest.fn().mockResolvedValue([]),
         };
 
         bucketMock = {
             file: jest.fn(() => fileMock),
+            upload: jest.fn().mockResolvedValue([]),
         };
 
         env.admin.storage = jest.fn(() => ({
@@ -26,7 +44,7 @@ describe("onProfileImageUploaded trigger", () => {
         jest.restoreAllMocks();
     });
 
-    test("onProfileImageUploaded generates a download token and updates Realtime Database", async () => {
+    test("onProfileImageUploaded generates a download token, optimizes image, and updates Realtime Database", async () => {
         const { onProfileImageUploaded } = require("../../lib/storage/onProfileImageUploaded");
 
         const event = {
@@ -39,12 +57,25 @@ describe("onProfileImageUploaded trigger", () => {
 
         await onProfileImageUploaded(event);
 
-        // Verify setMetadata was called with a new UUID
-        expect(fileMock.setMetadata).toHaveBeenCalledWith({
-            metadata: {
-                firebaseStorageDownloadTokens: expect.any(String)
-            }
-        });
+        // Verify sharp was called
+        const sharp = require("sharp");
+        expect(sharp).toHaveBeenCalled();
+
+        // Verify upload was called with a new UUID and correct cache-control
+        expect(bucketMock.upload).toHaveBeenCalledWith(
+            expect.stringContaining("opt_profile_user_123"),
+            expect.objectContaining({
+                destination: "users/user_123/profile_image",
+                metadata: expect.objectContaining({
+                    contentType: "image/webp",
+                    cacheControl: "public, max-age=31536000, s-maxage=31536000",
+                    metadata: expect.objectContaining({
+                        optimized: "true",
+                        firebaseStorageDownloadTokens: expect.any(String)
+                    })
+                })
+            })
+        );
 
         // Verify database update
         expect(env.writes).toContainEqual({
@@ -72,8 +103,21 @@ describe("onProfileImageUploaded trigger", () => {
 
         await onProfileImageUploaded(event);
 
-        // Verify setMetadata was NOT called
-        expect(fileMock.setMetadata).not.toHaveBeenCalled();
+        // Verify upload reuses the token
+        expect(bucketMock.upload).toHaveBeenCalledWith(
+            expect.stringContaining("opt_profile_user_123"),
+            expect.objectContaining({
+                destination: "users/user_123/profile_image",
+                metadata: expect.objectContaining({
+                    contentType: "image/webp",
+                    cacheControl: "public, max-age=31536000, s-maxage=31536000",
+                    metadata: expect.objectContaining({
+                        optimized: "true",
+                        firebaseStorageDownloadTokens: "existing-token-uuid"
+                    })
+                })
+            })
+        );
 
         // Verify database update with the existing token
         expect(env.writes).toContainEqual({
@@ -99,7 +143,7 @@ describe("onProfileImageUploaded trigger", () => {
 
         await onProfileImageUploaded(event);
 
-        expect(fileMock.setMetadata).not.toHaveBeenCalled();
+        expect(bucketMock.upload).not.toHaveBeenCalled();
         expect(env.writes).toEqual([]);
     });
 });

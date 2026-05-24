@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import { db } from "../shared/firebase";
+import { I18N_STRINGS } from "../shared/i18n";
 
 /**
  * Cloud Function HTTPS Callable para migrar usuarios antiguos que no tienen el campo
@@ -19,7 +20,7 @@ export const backfillTermsVersion = functions.https.onCall(async (request) => {
     if (!request.auth) {
         throw new functions.https.HttpsError(
             "unauthenticated",
-            "El usuario debe estar autenticado."
+            I18N_STRINGS.errors.unauthorized
         );
     }
 
@@ -30,7 +31,7 @@ export const backfillTermsVersion = functions.https.onCall(async (request) => {
     if (!callerRoleSnap.exists() || callerRoleSnap.val() !== "admin") {
         throw new functions.https.HttpsError(
             "permission-denied",
-            "Permiso denegado. Se requiere rol de administrador."
+            I18N_STRINGS.errors.unauthorized
         );
     }
 
@@ -85,7 +86,7 @@ export const backfillTermsVersion = functions.https.onCall(async (request) => {
         console.error("Error en la migración de backfillTermsVersion:", error);
         throw new functions.https.HttpsError(
             "internal",
-            "Error interno durante la ejecución del proceso de backfill."
+            I18N_STRINGS.errors.internal_error
         );
     }
 });

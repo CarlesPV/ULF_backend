@@ -40,25 +40,4 @@ export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2
     return getHaversineDistance(lat1, lon1, lat2, lon2);
 }
 
-/**
- * Evalúa si una coordenada geográfica se ubica en el interior de una región poligonal cerrada usando el algoritmo de Ray Casting.
- * 
- * El algoritmo proyecta un rayo horizontal desde el punto de interés y cuenta cuántas aristas interseca.
- * Un número impar de intersecciones determina que el punto se encuentra dentro de los límites del polígono.
- * 
- * @param point - Coordenada del punto a verificar `{ lat, lng }`.
- * @param polygon - Arreglo ordenado de coordenadas que delimitan la frontera del polígono `[{ lat, lng }]`.
- * 
- * @returns `true` si el punto se encuentra en el interior del polígono delimitador; de lo contrario `false`.
- */
-export function isPointInPolygon(point: { lat: number; lng: number }, polygon: { lat: number; lng: number }[]): boolean {
-    let isInside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = polygon[i].lat, yi = polygon[i].lng;
-        const xj = polygon[j].lat, yj = polygon[j].lng;
-        const intersect = ((yi > point.lng) !== (yj > point.lng)) &&
-            (point.lat < (xj - xi) * (point.lng - yi) / (yj - yi) + xi);
-        if (intersect) isInside = !isInside;
-    }
-    return isInside;
-}
+

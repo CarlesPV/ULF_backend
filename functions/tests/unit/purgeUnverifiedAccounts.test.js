@@ -38,12 +38,15 @@ describe("purgeUnverifiedAccounts scheduler", () => {
 
         expect(env.authApi.listUsers).toHaveBeenCalledWith(1000, undefined);
         expect(env.authApi.listUsers).toHaveBeenCalledWith(1000, "page-2");
-        expect(env.authApi.deleteUser).toHaveBeenCalledTimes(1);
-        expect(env.authApi.deleteUser).toHaveBeenCalledWith("expired-unverified");
+        expect(env.authApi.deleteUsers).toHaveBeenCalledTimes(1);
+        expect(env.authApi.deleteUsers).toHaveBeenCalledWith(["expired-unverified"]);
         expect(env.writes).toEqual([
             {
-                op: "remove",
-                path: "users/expired-unverified"
+                op: "update",
+                path: "",
+                value: {
+                    "users/expired-unverified": null
+                }
             }
         ]);
     });

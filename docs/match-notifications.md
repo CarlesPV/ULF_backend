@@ -1,10 +1,10 @@
 # Sistema de notificaciones de matches
 
-Revision: 22 de mayo de 2026.
+El backend envía notificaciones de coincidencias en dos escenarios:
+1. **Flujo Automático (`onPostCreated`):** Al crearse un nuevo post en la base de datos, el trigger busca automáticamente posts activos compatibles del tipo opuesto y notifica a sus autores (con umbral de score `>= 1.5`).
+2. **Flujo de Smart Matcher Callable (`checkPotentialMatches`):** Si el cliente invoca esta función enviando los datos del post (incluyendo su ID de origen), y la coincidencia con el post más relevante supera el umbral de `0.80`, se ejecuta una transacción atómica que establece el estado de ambos posts como `'matched'` y envía notificaciones push e in-app (`notifyMatchFound`) a ambos usuarios.
 
-El backend envia notificaciones de coincidencias cuando se crea un post nuevo y el trigger `onPostCreated` encuentra posts activos compatibles. La callable `checkPotentialMatches` solo devuelve sugerencias al cliente; no dispara notificaciones en el codigo actual.
-
-## Flujo automatico
+## Flujo automático (onPostCreated)
 
 ```text
 Usuario publica un post en /posts/{postId}
@@ -73,11 +73,13 @@ Notificacion in-app:
 - Tokens con `messaging/invalid-registration-token` o `messaging/registration-token-not-registered` se eliminan automaticamente.
 - La notificacion in-app se intenta guardar antes del envio push.
 
-## Diferencia con `checkPotentialMatches`
+## Comportamiento de `checkPotentialMatches`
 
-`checkPotentialMatches` se usa para que el cliente muestre sugerencias antes de publicar. No llama a `notifyMatchFound` y no acepta `notifyMatches`.
+`checkPotentialMatches` se usa principalmente para mostrar sugerencias en el cliente antes de la publicación definitiva. Sin embargo, si se le pasa el ID del post de origen (en `id`, `postId` o `post_id`) y la mejor coincidencia supera el umbral de `0.80`, actúa de forma activa en la base de datos realizando lo siguiente:
+- Cambia atómicamente el estado de ambos posts a `'matched'` en `/posts/{id}/status`.
+- Dispara notificaciones push e in-app (`notifyMatchFound`) a ambos usuarios destinatarios.
 
-El flujo de notificacion real depende de que exista un post nuevo en RTDB y se active `onPostCreated`.
+Si no se proporciona el ID del post o no se alcanza el umbral de `0.80`, únicamente retorna las mejores sugerencias a la interfaz de usuario sin alterar los datos ni enviar notificaciones.
 
 ## Testing
 
