@@ -8,3 +8,9 @@ functions/coverage/
 firebase-debug.log
 database-debug.log
 roadmap.md
+.firebase/
+*credentials*.json
+*service-account*.json
+*.pem
+*.key
+

@@ -171,11 +171,11 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
         tasks.push(enableChatsForPost(event.params.postId));
     }
 
-    // Gestión de archivos huérfanos: Si la URL de imagen ha cambiado, eliminamos la anterior física de Storage
+    // Gestión de archivos huérfanos: Si la URL de imagen ha cambiado o se ha eliminado, encolamos para borrado diferido
     const oldImageUrl = before?.imageUrl;
     const newImageUrl = after?.imageUrl;
     if (oldImageUrl && oldImageUrl !== newImageUrl) {
-        tasks.push(deleteStorageFileFromUrl(oldImageUrl));
+        tasks.push(queueImageDeletion(oldImageUrl));
     }
 
     await Promise.all(tasks);
@@ -183,11 +183,30 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
 });
 
 /**
+ * Encola una imagen en Firestore para su posterior eliminación diferida tras 1 hora.
+ *
+ * @param url - URL pública de Firebase Storage del archivo a eliminar.
+ */
+async function queueImageDeletion(url: string): Promise<void> {
+    if (!url || !url.startsWith("https://firebasestorage.googleapis.com")) return;
+    try {
+        const scheduledTime = admin.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
+        await admin.firestore().collection("pending_image_deletions").add({
+            imageUrl: url,
+            scheduledDeletionTime: scheduledTime
+        });
+        functions.logger.info(`[Storage Cleanup] Imagen encolada para borrado diferido: ${url}`);
+    } catch (error) {
+        functions.logger.error(`[Storage Cleanup Error] Fallo al encolar imagen para borrado diferido (${url}):`, error);
+    }
+}
+
+/**
  * Elimina físicamente un archivo de Firebase Storage a partir de su URL pública.
  *
  * @param url - URL pública de Firebase Storage del archivo a eliminar.
  */
-async function deleteStorageFileFromUrl(url: string): Promise<void> {
+export async function deleteStorageFileFromUrl(url: string): Promise<void> {
     if (!url || !url.startsWith("https://firebasestorage.googleapis.com")) return;
     try {
         const match = url.match(/\/o\/([^?#]+)/);
