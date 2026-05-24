@@ -8,3 +8,8 @@ functions/coverage/
 firebase-debug.log
 database-debug.log
 roadmap.md
+
+# Credentials & local files
+serviceAccountKey.json
+*serviceAccountKey*.json
+.env*.local

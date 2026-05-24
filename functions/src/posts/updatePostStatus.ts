@@ -32,6 +32,10 @@ export const updatePostStatus = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("unauthenticated", I18N_STRINGS.errors.unverified_email);
     }
 
+    if (process.env.FUNCTIONS_EMULATOR !== "true" && process.env.NODE_ENV !== "test" && !request.app) {
+        throw new functions.https.HttpsError("failed-precondition", I18N_STRINGS.errors.unauthorized);
+    }
+
     const { postId, newStatus } = request.data || {};
 
     if (

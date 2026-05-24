@@ -201,72 +201,24 @@ describe("integration: Realtime Database rules", () => {
     ));
   });
 
-  test("empty strings are rejected on critical post fields (title) but allowed on optional fields (description)", async () => {
+  test("direct database writes to posts are blocked for clients", async () => {
     await createVerifiedUser({
       uid: "owner-1",
       email: "owner@uab.cat"
     });
     const client = await signInClient(createClientApp(), "owner@uab.cat");
 
-    const postRef = firebaseDb.ref(client.database, "posts/post-empty-test");
+    const postRef = firebaseDb.ref(client.database, "posts/post-write-test");
 
-    // Intentar escribir post con título vacío
-    const invalidTitlePost = validPost("post-empty-test", "owner-1");
-    invalidTitlePost.title = "";
-    await expectPermissionDenied(firebaseDb.set(postRef, invalidTitlePost));
+    // Intentar crear un post directamente
+    await expectPermissionDenied(firebaseDb.set(postRef, validPost("post-write-test", "owner-1")));
 
-    // Intentar escribir post con descripción vacía (debería ser aceptado porque es opcional)
-    const validDescPost = validPost("post-empty-test", "owner-1");
-    validDescPost.description = "";
-    await expect(firebaseDb.set(postRef, validDescPost)).resolves.toBeUndefined();
-  });
-
-  test("users can create posts only with active status", async () => {
-    await createVerifiedUser({
-      uid: "owner-1",
-      email: "owner@uab.cat"
-    });
-    const client = await signInClient(createClientApp(), "owner@uab.cat");
-
-    await expect(firebaseDb.set(
-      firebaseDb.ref(client.database, "posts/post-active-create"),
-      validPost("post-active-create", "owner-1")
-    )).resolves.toBeUndefined();
-
-    const rejectedPost = validPost("post-rejected-create", "owner-1");
-    rejectedPost.status = "rejected";
-
-    await expectPermissionDenied(firebaseDb.set(
-      firebaseDb.ref(client.database, "posts/post-rejected-create"),
-      rejectedPost
-    ));
-  });
-
-  test("users cannot change post status directly but can edit fields when status is unchanged", async () => {
-    await createVerifiedUser({
-      uid: "owner-1",
-      email: "owner@uab.cat"
-    });
-    await adminDb().ref("posts/post-status-test").set(validPost("post-status-test", "owner-1"));
-    const client = await signInClient(createClientApp(), "owner@uab.cat");
-
-    const statusChangedPost = validPost("post-status-test", "owner-1");
-    statusChangedPost.status = "returned";
-    statusChangedPost.updated_at = Date.now();
-
-    await expectPermissionDenied(firebaseDb.set(
-      firebaseDb.ref(client.database, "posts/post-status-test"),
-      statusChangedPost
-    ));
-
-    const titleChangedPost = validPost("post-status-test", "owner-1");
-    titleChangedPost.title = "Mochila roja actualizada";
-    titleChangedPost.updated_at = Date.now();
-
-    await expect(firebaseDb.set(
-      firebaseDb.ref(client.database, "posts/post-status-test"),
-      titleChangedPost
-    )).resolves.toBeUndefined();
+    // Intentar actualizar un post existente directamente
+    await adminDb().ref("posts/post-write-test").set(validPost("post-write-test", "owner-1"));
+    await expectPermissionDenied(firebaseDb.set(postRef, {
+      ...validPost("post-write-test", "owner-1"),
+      title: "Mochila cambiada"
+    }));
   });
 
   test("Admin SDK can still mark posts as rejected for backend triggers", async () => {

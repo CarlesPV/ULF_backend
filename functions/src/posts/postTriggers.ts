@@ -4,9 +4,8 @@ import { admin } from "../shared/firebase";
 import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { notifyMultipleUsersOfMatch } from "../shared/notifications";
-import { getHaversineDistance } from "../shared/utils";
+import { getHaversineDistance, stringSimilarity } from "../shared/utils";
 import { I18N_STRINGS } from "../shared/i18n";
-import * as functions from "firebase-functions";
 import { logger } from "firebase-functions";
 
 // Margen de tolerancia de 50 metros para compensar punto flotante y GPS (según roadmap.md)
@@ -171,36 +170,61 @@ export const onPostUpdated = onValueUpdated("/posts/{postId}", async (event: any
         tasks.push(enableChatsForPost(event.params.postId));
     }
 
-    // Gestión de archivos huérfanos: Si la URL de imagen ha cambiado, eliminamos la anterior física de Storage
+    // Gestión de archivos huérfanos con borrado diferido (1 hora)
     const oldImageUrl = before?.imageUrl;
     const newImageUrl = after?.imageUrl;
+    const oldPostImageUrl = before?.postImageUrl;
+    const newPostImageUrl = after?.postImageUrl;
+    const oldPostThumbnailUrl = before?.postThumbnailUrl;
+    const newPostThumbnailUrl = after?.postThumbnailUrl;
+    const oldPhotoPath = before?.photo_path;
+    const newPhotoPath = after?.photo_path;
+
+    const pathsToSchedule = new Set<string>();
+
     if (oldImageUrl && oldImageUrl !== newImageUrl) {
-        tasks.push(deleteStorageFileFromUrl(oldImageUrl));
+        const path = getStoragePath(oldImageUrl);
+        if (path) pathsToSchedule.add(path);
+    }
+    if (oldPostImageUrl && oldPostImageUrl !== newPostImageUrl) {
+        const path = getStoragePath(oldPostImageUrl);
+        if (path) pathsToSchedule.add(path);
+        
+        if (oldPostThumbnailUrl && oldPostThumbnailUrl !== newPostThumbnailUrl) {
+            const thumbPath = getStoragePath(oldPostThumbnailUrl);
+            if (thumbPath) pathsToSchedule.add(thumbPath);
+        }
+    }
+    if (oldPhotoPath && oldPhotoPath !== newPhotoPath) {
+        const path = getStoragePath(oldPhotoPath);
+        if (path) pathsToSchedule.add(path);
+    }
+
+    if (pathsToSchedule.size > 0) {
+        const deletionsRef = admin.database().ref("scheduled_deletions");
+        const deleteAt = Date.now() + 60 * 60 * 1000; // 1 hora
+        
+        for (const storagePath of pathsToSchedule) {
+            const newDeletionRef = deletionsRef.push();
+            tasks.push(newDeletionRef.set({
+                postId: event.params.postId,
+                path: storagePath,
+                deleteAt: deleteAt
+            }));
+        }
     }
 
     await Promise.all(tasks);
     return null;
 });
 
-/**
- * Elimina físicamente un archivo de Firebase Storage a partir de su URL pública.
- *
- * @param url - URL pública de Firebase Storage del archivo a eliminar.
- */
-async function deleteStorageFileFromUrl(url: string): Promise<void> {
-    if (!url || !url.startsWith("https://firebasestorage.googleapis.com")) return;
-    try {
-        const match = url.match(/\/o\/([^?#]+)/);
-        if (match && match[1]) {
-            const storagePath = decodeURIComponent(match[1]);
-            const bucket = admin.storage().bucket();
-            const file = bucket.file(storagePath);
-            await file.delete();
-            functions.logger.info(`[Storage Cleanup] Imagen huérfana eliminada físicamente: ${storagePath}`);
-        }
-    } catch (error) {
-        functions.logger.error(`[Storage Cleanup Error] Fallo al eliminar imagen anterior (${url}):`, error);
+function getStoragePath(value: string): string | null {
+    if (!value) return null;
+    if (value.startsWith("https://firebasestorage.googleapis.com")) {
+        const match = value.match(/\/o\/([^?#]+)/);
+        return match && match[1] ? decodeURIComponent(match[1]) : null;
     }
+    return value;
 }
 
 /**
@@ -377,8 +401,16 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
 
                 if (searchWords.length > 0 && targetDesc) {
                     let matchCount = 0;
+                    const targetWords = targetDesc.split(/\s+/).filter((w: string) => w.length > 2);
                     for (const word of searchWords) {
-                        if (targetDesc.includes(word)) matchCount++;
+                        if (targetDesc.includes(word)) {
+                            matchCount++;
+                            continue;
+                        }
+                        const isFuzzyMatched = targetWords.some((tw: string) => stringSimilarity(word, tw) >= 0.85);
+                        if (isFuzzyMatched) {
+                            matchCount++;
+                        }
                     }
                     score += matchCount * 0.5;
                 }

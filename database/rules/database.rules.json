@@ -99,7 +99,7 @@
                 "coords/geohash"
             ],
             "$post_id": {
-                ".write": "auth != null && auth.token.email_verified === true && (!data.exists() || data.child('user_id').val() === auth.uid)",
+                ".write": "false",
                 ".validate": "newData.hasChildren(['id', 'user_id', 'center_id', 'type', 'title', 'category', 'status', 'coords', 'created_at', 'updated_at', 'is_deleted']) && newData.child('id').val() === $post_id && newData.child('coords').hasChildren(['lat', 'lng', 'geohash']) && newData.child('coords/lat').isNumber() && newData.child('coords/lng').isNumber() && newData.child('updated_at').val() === now && ((!data.exists() && newData.child('status').val() === 'active') || (data.exists() && newData.child('status').val() === data.child('status').val())) && (!newData.child('imageUrl').exists() || newData.child('imageUrl').isString())",
                 "user_id": {
                     ".validate": "!data.exists() || newData.val() === data.val()"

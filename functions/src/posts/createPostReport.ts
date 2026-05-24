@@ -50,6 +50,11 @@ export const createPostReport = functions.https.onCall(async (request) => {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
     }
 
+    // Validar token de App Check si no estamos en el emulador o en entorno de pruebas unitarias
+    if (process.env.FUNCTIONS_EMULATOR !== "true" && process.env.NODE_ENV !== "test" && !request.app) {
+        throw new functions.https.HttpsError("failed-precondition", I18N_STRINGS.errors.unauthorized);
+    }
+
     const data = request.data as PostReportPayload;
     const uid = request.auth.uid;
 

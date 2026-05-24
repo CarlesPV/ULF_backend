@@ -3,6 +3,7 @@ import { admin } from "../shared/firebase";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
 import { I18N_STRINGS } from "../shared/i18n";
 import { notifyMatchFound } from "../shared/notifications";
+import { stringSimilarity } from "../shared/utils";
 
 const SCORE_THRESHOLDS = {
     MIN_MATCH_SCORE: 0.80,
@@ -36,8 +37,21 @@ function tokenize(text: string): string[] {
  */
 function keywordMatchRatio(queryTokens: string[], targetText: string): number {
     if (queryTokens.length === 0 || !targetText) return 0;
-    const matches = queryTokens.filter(w => targetText.includes(w)).length;
-    return matches / queryTokens.length;
+    const targetTokens = tokenize(targetText);
+    const targetLower = targetText.toLowerCase();
+
+    let matchCount = 0;
+    for (const qw of queryTokens) {
+        if (targetLower.includes(qw)) {
+            matchCount++;
+            continue;
+        }
+        const isFuzzyMatched = targetTokens.some(tw => stringSimilarity(qw, tw) >= 0.85);
+        if (isFuzzyMatched) {
+            matchCount++;
+        }
+    }
+    return matchCount / queryTokens.length;
 }
 
 /**

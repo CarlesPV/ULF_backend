@@ -41,10 +41,12 @@ export { secureUniversityRegistration } from "./auth/secureUniversityRegistratio
 export { createPostReport } from "./posts/createPostReport";
 export { onPostCreated, onPostUpdated, onPostDeleted } from "./posts/postTriggers";
 export { updatePostStatus } from "./posts/updatePostStatus";
+export { updatePost } from "./posts/updatePost";
 export { recordPostView } from "./posts/recordPostView";
 export { getFilteredFeed } from "./feed/getFilteredFeed";
 export { checkPotentialMatches } from "./matcher/checkPotentialMatches";
 export { purgeUnverifiedAccounts } from "./maintenance/purgeUnverifiedAccounts";
+export { cleanScheduledDeletions } from "./maintenance/cleanScheduledDeletions";
 export { backfillTermsVersion } from "./maintenance/backfillTermsVersion";
 export { saveFcmToken } from "./notifications/saveFcmToken";
 export { markNotificationsRead } from "./notifications/markNotificationsRead";

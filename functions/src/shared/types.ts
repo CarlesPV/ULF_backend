@@ -30,6 +30,12 @@ export interface Post {
     };
     photo_path: string;
     photo_url?: string;
+    imageUrl?: string;
+    postImageUrl?: string;
+    postThumbnailUrl?: string;
+    translated_title?: string;
+    rejection_reason?: string;
+    date?: number;
     vision_labels?: string[];
     created_at: number;
     updated_at: number;

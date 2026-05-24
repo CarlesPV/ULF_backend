@@ -214,6 +214,53 @@ describe("post triggers", () => {
     }));
   });
 
+  test("onPostCreated notifies owners of automatic matches with fuzzy matching in description", async () => {
+    const env = setupPostTriggerEnv({
+      translateResult: "pantalo",
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-1": 100
+        },
+        "posts/lost-1": {
+          id: "lost-1",
+          type: "lost",
+          category: "keys",
+          status: "active",
+          is_deleted: false,
+          user_id: "owner-1",
+          translated_description: "pantalon"
+        },
+        "users/owner-1/settings/language": "es",
+        "users/owner-1/fcm_tokens": {
+          "token-owner-1": true
+        }
+      }
+    });
+    const update = jest.fn(async () => undefined);
+    const { onPostCreated } = require("../../lib/posts/postTriggers");
+
+    await onPostCreated(createdEvent({
+      center_id: "uab",
+      coords: validCoords,
+      status: "active",
+      is_deleted: false,
+      created_at: 123,
+      type: "found",
+      category: "keys",
+      color: "rojo",
+      title: "Llavero rojo",
+      description: "pantalo"
+    }, "new-post", update));
+
+    expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
+    expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
+      token: "token-owner-1",
+      data: expect.objectContaining({
+        matchPostId: "new-post"
+      })
+    }));
+  });
+
   test("onPostCreated limits automatic match notifications to the top five scores", async () => {
     const activePosts = {};
     const onceByPath = {
@@ -411,6 +458,30 @@ describe("post triggers", () => {
       "chats/chat-2/postTitle": "Nuevo título",
       "chats/chat-2/postImageUrl": "new.jpg"
     });
+  });
+
+  test("onPostUpdated schedules old imageUrl for deferred deletion in scheduled_deletions", async () => {
+    const env = setupCallableTestEnv();
+    const { onPostUpdated } = require("../../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ imageUrl: "https://firebasestorage.googleapis.com/v0/b/bucket/o/posts%2Fpost-1%2Fold.jpg?alt=media", center_id: "uab" }) },
+        after: { val: () => ({ imageUrl: "https://firebasestorage.googleapis.com/v0/b/bucket/o/posts%2Fpost-1%2Fnew.jpg?alt=media", center_id: "uab", status: "active", is_deleted: false, created_at: 123 }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    const deletionWrite = env.writes.find(w => w.path.startsWith("scheduled_deletions/"));
+    expect(deletionWrite).toBeDefined();
+    expect(deletionWrite.op).toBe("set");
+    expect(deletionWrite.value).toEqual(expect.objectContaining({
+      postId: "post-1",
+      path: "posts/post-1/old.jpg",
+      deleteAt: expect.any(Number)
+    }));
   });
 
   test("onPostUpdated disables chats in cascade when post status changes to returned", async () => {

@@ -84,7 +84,6 @@ Publicaciones de objetos.
 | :--- | :--- | :--- |
 | `id` | `string` | ID del post. |
 | `user_id` | `string` | Autor. |
-| `user_name` | `string` | Nombre denormalizado opcional. |
 | `center_id` | `string` | Centro. |
 | `type` | `string` | `lost` o `found`. |
 | `title` | `string` | Titulo. |

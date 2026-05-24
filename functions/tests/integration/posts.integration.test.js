@@ -5,7 +5,8 @@ const {
   createVerifiedUser,
   resetEmulators,
   signInClient,
-  waitFor
+  waitFor,
+  firebaseStorage
 } = require("./helpers/firebaseEmulatorTestEnv");
 
 async function expectFunctionError(promise, code) {
@@ -78,5 +79,50 @@ describe("integration: post creation and active index", () => {
 
     const postsSnap = await adminDb().ref("posts").once("value");
     expect(postsSnap.exists()).toBe(false);
+  });
+
+  test("verified user edits post and old image is deleted after 1 hour via cron", async () => {
+    await createVerifiedUser({
+      uid: "user-1",
+      email: "poster@uab.cat"
+    });
+    const client = await signInClient(createClientApp(), "poster@uab.cat");
+
+    // 1. Create a post
+    const createResult = await callFunction(client, "createPostReport", {
+      center_id: "uab",
+      type: "lost",
+      title: "Mochila roja",
+      category: "bags",
+      lat: 41.5008587,
+      lng: 2.1042399
+    });
+    const postId = createResult.data.post_id;
+
+    // 2. Upload a file to storage and set as post's imageUrl
+    const fileRef = firebaseStorage.ref(client.storage, `posts/${postId}/old_image.jpg`);
+    await firebaseStorage.uploadBytes(fileRef, Buffer.from("mock image data"), { contentType: "image/jpeg" });
+    const oldUrl = `https://firebasestorage.googleapis.com/v0/b/demo-ulf.appspot.com/o/posts%2F${postId}%2Fold_image.jpg?alt=media`;
+
+    await adminDb().ref(`posts/${postId}`).update({ imageUrl: oldUrl });
+
+    // 3. Update the post with a new image URL using updatePost
+    const newUrl = `https://firebasestorage.googleapis.com/v0/b/demo-ulf.appspot.com/o/posts%2F${postId}%2Fnew_image.jpg?alt=media`;
+    await callFunction(client, "updatePost", {
+      postId,
+      updates: { imageUrl: newUrl }
+    });
+
+    // 4. Verify post database was updated
+    const postSnap = await adminDb().ref(`posts/${postId}`).once("value");
+    expect(postSnap.val().imageUrl).toBe(newUrl);
+
+    // 5. Verify the deletion was scheduled
+    const deletionsSnap = await adminDb().ref("scheduled_deletions").once("value");
+    expect(deletionsSnap.exists()).toBe(true);
+
+    const deletionKey = Object.keys(deletionsSnap.val())[0];
+    const deletionRecord = deletionsSnap.val()[deletionKey];
+    expect(deletionRecord.path).toBe(`posts/${postId}/old_image.jpg`);
   });
 });

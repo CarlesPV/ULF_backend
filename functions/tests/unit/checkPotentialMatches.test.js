@@ -448,4 +448,44 @@ describe("checkPotentialMatches", () => {
     expect(result.matches[1].id).toBe("lost-diff-cat");
     expect(result.matches[0].score).toBeGreaterThan(result.matches[1].score);
   });
+
+  test("supports fuzzy matching (tolerance of typo errors >= 0.85 similarity)", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-1": 100
+        },
+        "posts/lost-1": {
+          id: "lost-1",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          user_id: "other-user",
+          title: "llavero",
+          translated_title: "llavero",
+          translated_description: "ribbon",
+          photo_path: "posts/lost-1.jpg"
+        }
+      }
+    });
+
+    env.translateText
+      .mockResolvedValueOnce("llaver")
+      .mockResolvedValueOnce("other");
+
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      title: "llaver",
+      description: "other"
+    }));
+
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].id).toBe("lost-1");
+    expect(result.matches[0].score).toBeGreaterThanOrEqual(0.80);
+  });
 });
+
