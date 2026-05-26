@@ -267,7 +267,7 @@ describe("post triggers", () => {
 
   test("onPostCreated keeps indexing when automatic notification lookup fails", async () => {
     jest.spyOn(console, "error").mockImplementation(() => { });
-    const notifyMultipleUsersOfMatch = jest.fn().mockRejectedValue(new Error("notify failed"));
+    const notifyMatchFound = jest.fn().mockRejectedValue(new Error("notify failed"));
     const env = setupPostTriggerEnv({
       translateResult: "red keychain",
       onceByPath: {
@@ -286,7 +286,7 @@ describe("post triggers", () => {
       }
     });
     jest.doMock(require.resolve("../../lib/shared/notifications"), () => ({
-      notifyMultipleUsersOfMatch
+      notifyMatchFound
     }));
     const { onPostCreated } = require("../../lib/posts/postTriggers");
 
@@ -313,7 +313,7 @@ describe("post triggers", () => {
       path: "active_posts/uab/found/new-post",
       value: 123
     });
-    expect(notifyMultipleUsersOfMatch).toHaveBeenCalled();
+    expect(notifyMatchFound).toHaveBeenCalled();
   });
 
   test("onPostUpdated writes active posts into the active index", async () => {

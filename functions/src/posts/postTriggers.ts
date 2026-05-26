@@ -3,7 +3,7 @@ import { HttpsError } from "firebase-functions/v2/https";
 import { admin } from "../shared/firebase";
 import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
-import { notifyMultipleUsersOfMatch } from "../shared/notifications";
+import { notifyMatchFound } from "../shared/notifications";
 import { getHaversineDistance } from "../shared/utils";
 import { I18N_STRINGS } from "../shared/i18n";
 import * as functions from "firebase-functions";
@@ -382,11 +382,13 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
         }
 
         // Evaluar compatibilidad de reportes y scoring
-        const potentialMatches: { userId: string; score: number }[] = [];
+        const potentialMatches: any[] = [];
 
         for (const snap of postSnapshots) {
             if (!snap.exists()) continue;
             const existingPost = snap.val();
+
+            if (existingPost.user_id === newPost.user_id) continue;
 
             if (existingPost.type === targetType && existingPost.category === newPost.category &&
                 existingPost.status === "active" && !existingPost.is_deleted && existingPost.user_id) {
@@ -406,7 +408,11 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
                 if (score >= 1.5) {
                     potentialMatches.push({
                         userId: existingPost.user_id,
-                        score: score
+                        score: score,
+                        postId: snap.key,
+                        title: existingPost.title || "",
+                        description: existingPost.description || "",
+                        photo_url: existingPost.photo_url || existingPost.imageUrl || existingPost.postImageUrl || ""
                     });
                 }
             }
@@ -415,17 +421,49 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
         // Ordenar coincidencias y tomar las 5 más relevantes
         const topMatches = potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5);
 
-        // Enviar notificaciones push a los propietarios de posts anteriores informando sobre el nuevo post
+        // Actualización atómica en la DB a 'matched'
+        if (topMatches.length > 0) {
+            const updates: { [key: string]: any } = {};
+            updates[`posts/${postId}/status`] = "matched";
+            updates[`posts/${postId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+
+            for (const match of topMatches) {
+                if (match.postId) {
+                    updates[`posts/${match.postId}/status`] = "matched";
+                    updates[`posts/${match.postId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+                }
+            }
+
+            await admin.database().ref().update(updates);
+        }
+
+        // Enviar notificaciones cruzadas bidireccionales
         for (const match of topMatches) {
             try {
-                await notifyMultipleUsersOfMatch([match.userId], {
-                    id: postId,
-                    title: newPost.title,
-                    description: newPost.description,
-                    photo_url: newPost.photo_url || ""
-                }, match.score);
+                await Promise.all([
+                    notifyMatchFound(
+                        match.userId,
+                        {
+                            id: postId,
+                            title: newPost.title || "",
+                            description: newPost.description || "",
+                            photo_url: newPost.photo_url || newPost.imageUrl || newPost.postImageUrl || ""
+                        },
+                        match.score
+                    ),
+                    notifyMatchFound(
+                        newPost.user_id,
+                        {
+                            id: match.postId || "",
+                            title: match.title || "",
+                            description: match.description || "",
+                            photo_url: match.photo_url || ""
+                        },
+                        match.score
+                    )
+                ]);
             } catch (error) {
-                console.error(`Error notificando usuario ${match.userId} sobre nuevo post ${postId}:`, error);
+                console.error(`Error enviando notificaciones de match para ${match.userId} y ${newPost.user_id}:`, error);
             }
         }
 
