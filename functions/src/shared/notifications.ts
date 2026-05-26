@@ -23,6 +23,8 @@ export interface NotificationPayload {
         matchTitle?: string;
         matchScore?: number;
         matchPhotoUrl?: string;
+        score?: number;
+        photo_url?: string;
         timestamp: number;
         chatId?: string;
         messageId?: string;
@@ -101,6 +103,8 @@ export async function sendNotificationToUser(
                 matchTitle: payload.data.matchTitle || "",
                 matchScore: payload.data.matchScore !== undefined ? payload.data.matchScore.toString() : "",
                 matchPhotoUrl: payload.data.matchPhotoUrl || "",
+                score: payload.data.score !== undefined ? payload.data.score.toString() : "",
+                photo_url: payload.data.photo_url || "",
                 timestamp: payload.data.timestamp ? payload.data.timestamp.toString() : Date.now().toString(),
                 chatId: payload.data.chatId || "",
                 messageId: payload.data.messageId || "",
@@ -177,7 +181,7 @@ export async function notifyMatchFound(
         if (userSnap.exists()) {
             const userVal = userSnap.val() || {};
             const settings = userVal.settings || {};
-            const val = userVal.preferredLanguage || settings.preferredLanguage || userVal.language || settings.language;
+            const val = settings.language || userVal.preferredLanguage || settings.preferredLanguage || userVal.language;
             if (val === "ca" || val === "es" || val === "en") {
                 lang = val;
             }
@@ -191,12 +195,14 @@ export async function notifyMatchFound(
         title: getNotificationString("match_found_title", lang),
         body: getNotificationString("match_found_body", lang),
         data: {
-            type: "match",
+            type: "match_found",
             postId: matchPost.id,
             matchPostId: matchPost.id,
             matchTitle: matchPost.title,
+            score: matchScore,
             matchScore,
-            matchPhotoUrl: matchPost.photo_url,
+            photo_url: matchPost.photo_url || "",
+            matchPhotoUrl: matchPost.photo_url || "",
             timestamp: Date.now(),
         },
     };

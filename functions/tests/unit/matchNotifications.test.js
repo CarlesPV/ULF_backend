@@ -134,12 +134,14 @@ describe("Match Notification System", () => {
                 body: "Hem trobat un objecte que coincideix en un 80% o més amb la teva publicació."
             },
             data: expect.objectContaining({
-                type: "match",
+                type: "match_found",
                 postId: "post-99",
                 matchPostId: "post-99",
                 matchTitle: "Motxilla blava",
                 matchScore: "2.5",
                 matchPhotoUrl: "https://example.com/photo.jpg",
+                score: "2.5",
+                photo_url: "https://example.com/photo.jpg",
                 timestamp: "1710000000000"
             })
         }));
@@ -237,12 +239,14 @@ describe("Match Notification System", () => {
                 body: "Hem trobat un objecte que coincideix en un 80% o més amb la teva publicació."
             },
             data: expect.objectContaining({
-                type: "match",
+                type: "match_found",
                 postId: "post-99",
                 matchPostId: "post-99",
                 matchTitle: "Motxilla blava",
                 matchScore: "2.5",
                 matchPhotoUrl: "https://example.com/photo.jpg",
+                score: "2.5",
+                photo_url: "https://example.com/photo.jpg",
                 timestamp: "1710000000000"
             })
         }));
