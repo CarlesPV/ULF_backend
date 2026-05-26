@@ -76,8 +76,11 @@ Notificacion in-app:
 ## Comportamiento de `checkPotentialMatches`
 
 `checkPotentialMatches` se usa principalmente para mostrar sugerencias en el cliente antes de la publicación definitiva. Sin embargo, si se le pasa el ID del post de origen (en `id`, `postId` o `post_id`) y la mejor coincidencia supera el umbral de `0.80`, actúa de forma activa en la base de datos realizando lo siguiente:
-- Cambia atómicamente el estado de ambos posts a `'matched'` en `/posts/{id}/status`.
-- Dispara notificaciones push e in-app (`notifyMatchFound`) a ambos usuarios destinatarios.
+- **Actualización Atómica Bidireccional de Estado:** Cambia atómicamente el estado de ambos posts a `'matched'` y establece `updated_at` con el timestamp actual del servidor (`admin.database.ServerValue.TIMESTAMP`) de forma simétrica para ambos documentos (`posts/${sourcePostId}` y `posts/${bestMatch.id}`).
+- **Flujo de Notificaciones Cruzadas (Cross-Notifications):** Dispara notificaciones push e in-app (`notifyMatchFound`) de manera cruzada a ambos usuarios concurrentemente:
+  - El creador del post origen (`request.auth.uid`) recibe la notificación con la información básica (ID, título, descripción, foto) del post de la contraparte (`bestMatch`).
+  - El creador del post de coincidencia (`bestMatch.user_id`) recibe la notificación con la información básica del post origen.
+  - El campo `matchPostId` viaja de manera segura dentro de la propiedad `data` del payload final de FCM y se persiste en la notificación In-App, apuntando siempre al ID del post contrario (de la contraparte).
 
 Si no se proporciona el ID del post o no se alcanza el umbral de `0.80`, únicamente retorna las mejores sugerencias a la interfaz de usuario sin alterar los datos ni enviar notificaciones.
 
