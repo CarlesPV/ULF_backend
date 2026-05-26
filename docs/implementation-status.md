@@ -14,11 +14,11 @@ Fecha de revision: 22 de mayo de 2026.
 | Notificaciones FCM e in-app | Implementado | `shared/notifications.ts`, `saveFcmToken`, `markNotificationsRead`, `onMessageCreated` y notificaciones automaticas desde `onPostCreated`. |
 | Chats | Implementado | `getOrCreateChat` crea/reutiliza chats y `onMessageCreated` actualiza metadatos e indices. |
 | Perfil | Implementado | `onUserProfileUpdated` propaga `name` y `photoUrl` a chats; triggers de Storage sincronizan URLs de perfil. |
-| Imagenes de posts | Implementado parcial | El cliente sube WebP; `onImageUploaded` extrae `vision_labels` para posts. No hay conversion backend de posts a WebP en el codigo actual. |
+| Imagenes de posts | Implementado | El cliente sube la imagen original; `onImageUploaded` la optimiza (máx 1080px de ancho) y la convierte a WebP junto a un thumbnail, además de extraer `vision_labels`. |
 | Internacionalizacion backend | Implementado | `shared/i18n.ts` y `shared/translate.ts` soportan `es`, `en`, `ca`; `es` es idioma base. |
 | Geovallado backend | Implementado | `createPostReport` y `onPostCreated` validan distancia Haversine contra `location` + `radius_meters` + 50 m. |
 | Mantenimiento | Implementado | `purgeUnverifiedAccounts` y `backfillTermsVersion`. |
-| Tests automatizados | Implementado | 18 suites unitarias / 137 casos declarados y 6 suites de integracion / 21 casos declarados. |
+| Tests automatizados | Implementado | 20 suites unitarias / 166 casos declarados y 6 suites de integracion / 25 casos declarados. |
 
 ## Matices importantes
 
@@ -31,5 +31,4 @@ Fecha de revision: 22 de mayo de 2026.
 
 - Unificar la publicacion del cliente alrededor de `createPostReport` para concentrar la escritura final en backend.
 - Migrar el cliente a `markNotificationsRead` si se quiere evitar escritura directa de la bandeja.
-- Decidir si se mantiene la conversion WebP de posts en cliente o se reintroduce optimizacion backend real.
 - Revisar validacion de estados en `updatePostStatus`, ya que Admin SDK no aplica reglas de RTDB.

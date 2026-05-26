@@ -36,6 +36,7 @@ Callables:
 - `getFilteredFeed`
 - `checkPotentialMatches`
 - `backfillTermsVersion`
+- `purgeOrphanFields`
 - `saveFcmToken`
 - `markNotificationsRead`
 - `getOrCreateChat`
@@ -48,6 +49,7 @@ Triggers y jobs:
 - `onProfileImageUploaded`
 - `onUserProfileUpdated`
 - `purgeUnverifiedAccounts`
+- `cleanupOldImages`
 
 ## Desarrollo
 

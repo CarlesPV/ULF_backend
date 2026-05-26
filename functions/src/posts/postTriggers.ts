@@ -9,7 +9,7 @@ import { I18N_STRINGS } from "../shared/i18n";
 import * as functions from "firebase-functions";
 import { logger } from "firebase-functions";
 
-// Margen de tolerancia de 50 metros para compensar punto flotante y GPS (según roadmap.md)
+// Margen de tolerancia de 50 metros para compensar punto flotante y GPS
 const LOCATION_TOLERANCE_METERS = 50;
 
 // Cache para minimizar lecturas a DB en triggers de alta frecuencia
