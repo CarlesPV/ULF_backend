@@ -542,10 +542,10 @@ describe("checkPotentialMatches", () => {
     // Check updates in database (atomic update on ref "")
     const updateWrite = env.writes.find(w => w.op === "update" && w.path === "");
     expect(updateWrite).toBeDefined();
-    expect(updateWrite.value["posts/source-post-123/status"]).toBe("matched");
-    expect(updateWrite.value["posts/lost-1/status"]).toBe("matched");
-    expect(updateWrite.value["posts/source-post-123/updated_at"]).toBe(1700000000000); // from ServerValue.TIMESTAMP mockup
-    expect(updateWrite.value["posts/lost-1/updated_at"]).toBe(1700000000000);
+    expect(updateWrite.value["/posts/source-post-123/status"]).toBe("matched");
+    expect(updateWrite.value["/posts/lost-1/status"]).toBe("matched");
+    expect(updateWrite.value["/posts/source-post-123/updated_at"]).toBe(1700000000000); // from ServerValue.TIMESTAMP mockup
+    expect(updateWrite.value["/posts/lost-1/updated_at"]).toBe(1700000000000);
 
     // Check FCM messaging calls
     expect(env.messagingApi.send).toHaveBeenCalledTimes(2);
