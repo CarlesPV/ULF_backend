@@ -119,6 +119,7 @@ function dateProximityScore(ts1: number, ts2: number, maxScore: number): number 
 export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const { center_id, category, type, description, title, location, postImageUrl, created_at } = request.data;
     const sourcePostId = request.data.id || request.data.postId || request.data.post_id;
+    const callerLang = request.data.lang || "es";
 
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
@@ -220,16 +221,21 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     });
 
     const bestMatch = sortedMatches[0];
-    if (bestMatch && bestMatch.score >= 0.80 && sourcePostId) {
+    if (bestMatch && bestMatch.score >= 0.80) {
+        if (!sourcePostId || !bestMatch.id) return;
         try {
             const updates: { [key: string]: any } = {};
-            updates[`posts/${sourcePostId}/status`] = "matched";
-            updates[`posts/${sourcePostId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
-            updates[`posts/${bestMatch.id}/status`] = "matched";
-            updates[`posts/${bestMatch.id}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+            updates[`/posts/${sourcePostId}/status`] = "matched";
+            updates[`/posts/${sourcePostId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+            updates[`/posts/${bestMatch.id}/status`] = "matched";
+            updates[`/posts/${bestMatch.id}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
 
+            console.log(`Ejecutando update atómico para posts ${sourcePostId} y ${bestMatch.id}:`, updates);
             await admin.database().ref().update(updates);
             console.log(`Smart Matcher exitoso: posts ${sourcePostId} y ${bestMatch.id} actualizados a 'matched'`);
+
+            // Delay de 2 segundos antes de enviar las notificaciones
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
             // Disparar notificaciones a ambos usuarios
             const targetUserId = bestMatch.user_id;
@@ -256,7 +262,8 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
                         description: targetDesc,
                         photo_url: targetPhotoUrl
                     },
-                    bestMatch.score
+                    bestMatch.score,
+                    callerLang
                 )
             ]).catch(err => {
                 console.error("Error al enviar notificaciones de match:", err);
