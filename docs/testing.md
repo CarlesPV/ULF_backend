@@ -26,8 +26,8 @@ Usan Jest y mocks manuales. No levantan emuladores ni conectan con Firebase real
 
 Estado actual en el arbol de tests:
 
-- 18 suites unitarias (`*.test.js`).
-- 137 casos declarados con `test(...)` o `it(...)`.
+- 20 suites unitarias (`*.test.js`).
+- 166 casos declarados con `test(...)` o `it(...)`.
 
 ## Tests De Integración
 
@@ -61,7 +61,7 @@ La suite evita servicios externos no emulados. No prueba Vision, Translate ni FC
 Estado actual en integracion:
 
 - 6 suites de integracion (`*.integration.test.js`).
-- 21 casos declarados con `test(...)` o `it(...)`.
+- 25 casos declarados con `test(...)` o `it(...)`.
 
 ## CI/CD
 

@@ -5,7 +5,7 @@ import { PostReportPayload, Center } from "../shared/types";
 import { getHaversineDistance } from "../shared/utils";
 import { I18N_STRINGS } from "../shared/i18n";
 
-// Margen de tolerancia de 50 metros para compensar punto flotante y GPS (según roadmap.md)
+// Margen de tolerancia de 50 metros para compensar punto flotante y GPS
 const LOCATION_TOLERANCE_METERS = 50;
 
 // Cache en memoria para minimizar lecturas a la base de datos

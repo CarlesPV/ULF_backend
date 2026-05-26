@@ -448,4 +448,44 @@ describe("checkPotentialMatches", () => {
     expect(result.matches[1].id).toBe("lost-diff-cat");
     expect(result.matches[0].score).toBeGreaterThan(result.matches[1].score);
   });
+
+  test("tolerates typos (fuzzy matching) and removes diacritics and punctuation", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-fuzzy": 100
+        },
+        "posts/lost-fuzzy": {
+          id: "lost-fuzzy",
+          type: "lost",
+          category: "bags",
+          is_deleted: false,
+          user_id: "other-user",
+          title: "Mochila escolar",
+          translated_description: "una mochila azul",
+          photo_path: "posts/lost-fuzzy.jpg"
+        }
+      }
+    });
+
+    env.translateText
+      .mockResolvedValueOnce("mochial") // typo in title
+      .mockResolvedValueOnce("azul!"); // punctuation in description
+
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      center_id: "uab",
+      type: "found",
+      category: "bags",
+      title: "Móchial", // accent and typo
+      description: "azul!" // punctuation
+    }));
+
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].id).toBe("lost-fuzzy");
+    // "mochial" matches "mochila escolar" via areWordsSimilar because getLevenshteinDistance("mochial", "mochila") is 2.
+    // "azul!" matches "una mochila azul" via areWordsSimilar after punctuation removal.
+    expect(result.matches[0].score).toBeGreaterThanOrEqual(1.0);
+  });
 });

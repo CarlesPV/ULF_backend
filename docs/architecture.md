@@ -71,7 +71,7 @@ database/seed/
 | `onPostUpdated` | RTDB `/posts/{postId}` update | Sincroniza indices activos, actualiza metadatos de chats y elimina imagen anterior si cambia la URL. |
 | `onPostDeleted` | RTDB `/posts/{postId}` delete | Elimina entradas en `/active_posts`. |
 | `onMessageCreated` | RTDB `/messages/{chatId}/{messageId}` create | Actualiza `last_message`, reordena `user_chats`, guarda notificacion in-app y envia FCM al resto de miembros. |
-| `onImageUploaded` | Storage `onObjectFinalized` | En posts extrae etiquetas Vision y actualiza `vision_labels`; en perfiles dinamicos puede generar `profile_image.webp`. |
+| `onImageUploaded` | Storage `onObjectFinalized` | En posts optimiza, convierte a WebP junto a un thumbnail, extrae etiquetas Vision y actualiza `vision_labels`. |
 | `onProfileImageUploaded` | Storage `users/{uid}/profile_image` | Sincroniza `photoUrl` del usuario con una URL Firebase Storage persistente. |
 | `onUserProfileUpdated` | RTDB `/users/{userId}` update | Propaga cambios de nombre/foto a `usersInfo` de chats. |
 | `purgeUnverifiedAccounts` | Schedule diario 02:00 | Elimina cuentas de Auth no verificadas con mas de 48 horas. |
@@ -93,7 +93,7 @@ El backend soporta dos canales:
 
 ## Storage
 
-Las reglas permiten lectura publica de imagenes de posts y perfiles, y escritura autenticada con limite de 5 MB. Las imagenes de chat requieren autenticacion para lectura y escritura. El backend no convierte actualmente las imagenes de posts a WebP; el cliente ya las sube como WebP y el trigger de posts se ocupa de Vision labels.
+Las reglas permiten lectura publica de imagenes de posts y perfiles, y escritura autenticada con limite de 5 MB. Las imagenes de chat requieren autenticacion para lectura y escritura. El backend descarga la imagen original de posts, la optimiza redimensionándola a un ancho máximo de 1080px, la convierte a formato WebP junto a una versión miniatura (thumbnail) de 200x200px, y actualiza el post correspondiente con sus respectivas URLs de Storage y etiquetas de Vision.
 
 ## CI/CD
 

@@ -413,6 +413,52 @@ describe("post triggers", () => {
     });
   });
 
+  test("onPostUpdated queues old image for deferred deletion when image changes", async () => {
+    const env = setupCallableTestEnv();
+    const { onPostUpdated } = require("../../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ title: "Objeto", imageUrl: "https://firebasestorage.googleapis.com/v0/b/test-bucket/o/posts%2Fpost-1%2Fimage.jpg?alt=media", center_id: "uab" }) },
+        after: { val: () => ({ title: "Objeto", imageUrl: "https://firebasestorage.googleapis.com/v0/b/test-bucket/o/posts%2Fpost-1%2Fnew-image.jpg?alt=media", center_id: "uab", status: "active", is_deleted: false, created_at: 123 }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    expect(env.firestoreWrites).toContainEqual(expect.objectContaining({
+      op: "add",
+      collection: "pending_image_deletions",
+      data: expect.objectContaining({
+        imageUrl: "https://firebasestorage.googleapis.com/v0/b/test-bucket/o/posts%2Fpost-1%2Fimage.jpg?alt=media"
+      })
+    }));
+  });
+
+  test("onPostUpdated queues old image for deferred deletion when image is manually deleted", async () => {
+    const env = setupCallableTestEnv();
+    const { onPostUpdated } = require("../../lib/posts/postTriggers");
+
+    const event = {
+      params: { postId: "post-1" },
+      data: {
+        before: { val: () => ({ title: "Objeto", imageUrl: "https://firebasestorage.googleapis.com/v0/b/test-bucket/o/posts%2Fpost-1%2Fimage.jpg?alt=media", center_id: "uab" }) },
+        after: { val: () => ({ title: "Objeto", imageUrl: null, center_id: "uab", status: "active", is_deleted: false, created_at: 123 }) }
+      }
+    };
+
+    await onPostUpdated(event);
+
+    expect(env.firestoreWrites).toContainEqual(expect.objectContaining({
+      op: "add",
+      collection: "pending_image_deletions",
+      data: expect.objectContaining({
+        imageUrl: "https://firebasestorage.googleapis.com/v0/b/test-bucket/o/posts%2Fpost-1%2Fimage.jpg?alt=media"
+      })
+    }));
+  });
+
   test("onPostUpdated disables chats in cascade when post status changes to returned", async () => {
     const env = setupCallableTestEnv({
       onceByQuery: {

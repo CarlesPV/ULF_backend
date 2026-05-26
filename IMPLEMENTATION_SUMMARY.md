@@ -15,7 +15,7 @@ El backend implementa:
 - Geovallado Haversine en `createPostReport` y `onPostCreated`.
 - Vision labels para imagenes de posts en `onImageUploaded`.
 - Sincronizacion de perfiles en chats con `onUserProfileUpdated`.
-- Mantenimiento con `purgeUnverifiedAccounts` y `backfillTermsVersion`.
+- Mantenimiento con `purgeUnverifiedAccounts`, `backfillTermsVersion`, `cleanupOldImages` y `purgeOrphanFields`.
 
 ## Notificaciones de matches
 
@@ -35,8 +35,8 @@ Nuevo post en /posts
 
 El arbol de tests contiene:
 
-- 18 suites unitarias con 137 casos declarados.
-- 6 suites de integracion con 21 casos declarados.
+- 20 suites unitarias con 166 casos declarados.
+- 6 suites de integracion con 25 casos declarados.
 
 Comandos:
 

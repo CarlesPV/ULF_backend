@@ -178,14 +178,68 @@ function setupCallableTestEnv(options = {}) {
     return ref;
   };
 
+  const firestoreWrites = [];
+  const firestoreCollectionMock = jest.fn((colName) => ({
+    add: jest.fn(async (docData) => {
+      firestoreWrites.push({ op: "add", collection: colName, data: docData });
+      return { id: "mock-firestore-doc-id" };
+    }),
+    where: jest.fn(() => ({
+      get: jest.fn(async () => {
+        const docs = (options.firestoreDocs && options.firestoreDocs[colName]) || [];
+        return {
+          forEach: (callback) => {
+            docs.forEach((doc) => {
+              callback({
+                id: doc.id,
+                data: () => doc.data,
+                ref: {
+                  delete: jest.fn(async () => {
+                    firestoreWrites.push({ op: "delete", collection: colName, id: doc.id });
+                    return undefined;
+                  })
+                }
+              });
+            });
+          }
+        };
+      })
+    }))
+  }));
+  const firestoreTimestampMock = {
+    fromMillis: jest.fn((ms) => ({
+      toMillis: () => ms,
+      toDate: () => new Date(ms)
+    })),
+    now: jest.fn(() => ({
+      toMillis: () => Date.now(),
+      toDate: () => new Date()
+    }))
+  };
+
   const refMock = jest.fn(makeRef);
   const database = jest.fn(() => ({ ref: refMock }));
   database.ServerValue = { TIMESTAMP: 1700000000000 };
 
+  const storageFileDeleteMock = jest.fn(async () => undefined);
+  const storageFileMock = jest.fn(() => ({
+    delete: storageFileDeleteMock
+  }));
+  const storageBucketMock = jest.fn(() => ({
+    file: storageFileMock
+  }));
+  const storageApi = jest.fn(() => ({
+    bucket: storageBucketMock
+  }));
+
   const admin = {
     auth: jest.fn(() => authApi),
     database,
-    messaging: jest.fn(() => messagingApi)
+    messaging: jest.fn(() => messagingApi),
+    storage: storageApi,
+    firestore: Object.assign(jest.fn(() => ({ collection: firestoreCollectionMock })), {
+      Timestamp: firestoreTimestampMock
+    })
   };
   const db = { ref: refMock };
 
@@ -256,7 +310,10 @@ function setupCallableTestEnv(options = {}) {
     refMock,
     translateText,
     labelDetection,
-    writes
+    writes,
+    firestoreWrites,
+    storageFileMock,
+    storageFileDeleteMock
   };
 }
 
