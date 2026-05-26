@@ -169,21 +169,24 @@ export async function notifyMatchFound(
         description: string;
         photo_url?: string;
     },
-    matchScore: number
+    matchScore: number,
+    overrideLang?: SupportedLanguage
 ): Promise<boolean> {
-    let lang: SupportedLanguage = "es";
-    try {
-        const userSnap = await admin.database().ref(`users/${userId}`).once("value");
-        if (userSnap.exists()) {
-            const userVal = userSnap.val() || {};
-            const settings = userVal.settings || {};
-            const val = userVal.preferredLanguage || settings.preferredLanguage || userVal.language || settings.language;
-            if (val === "ca" || val === "es" || val === "en") {
-                lang = val;
+    let lang: SupportedLanguage = overrideLang || "es";
+    if (!overrideLang) {
+        try {
+            const userSnap = await admin.database().ref(`users/${userId}`).once("value");
+            if (userSnap.exists()) {
+                const userVal = userSnap.val() || {};
+                const settings = userVal.settings || {};
+                const val = userVal.preferredLanguage || settings.preferredLanguage || userVal.language || settings.language;
+                if (val === "ca" || val === "es" || val === "en") {
+                    lang = val;
+                }
             }
+        } catch (error) {
+            console.error(`Error obteniendo idioma preferido del usuario ${userId}:`, error);
         }
-    } catch (error) {
-        console.error(`Error obteniendo idioma preferido del usuario ${userId}:`, error);
     }
 
     const payload: NotificationPayload = {
