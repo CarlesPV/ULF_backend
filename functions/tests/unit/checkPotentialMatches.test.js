@@ -488,4 +488,87 @@ describe("checkPotentialMatches", () => {
     // "azul!" matches "una mochila azul" via areWordsSimilar after punctuation removal.
     expect(result.matches[0].score).toBeGreaterThanOrEqual(1.0);
   });
+
+  test("updates status to matched and notifies both users on successful match (score >= 0.80)", async () => {
+    const env = setupCallableTestEnv({
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-1": 100
+        },
+        "posts/lost-1": {
+          id: "lost-1",
+          type: "lost",
+          category: "keys",
+          is_deleted: false,
+          user_id: "other-user",
+          title: "Llaves rojas",
+          translated_title: "red keys",
+          translated_description: "red keychain",
+          photo_path: "posts/lost-same.jpg",
+          created_at: 1710000000000
+        },
+        "users/other-user": {
+          settings: {
+            language: "es"
+          }
+        },
+        "users/other-user/fcm_tokens": {
+          "token-other": true
+        },
+        "users/user-1": {
+          settings: {
+            language: "es"
+          }
+        },
+        "users/user-1/fcm_tokens": {
+          "token-user-1": true
+        }
+      },
+      translateResult: "red keys"
+    });
+
+    const { checkPotentialMatches } = require("../../lib/matcher/checkPotentialMatches");
+
+    const result = await checkPotentialMatches(verifiedRequest({
+      id: "source-post-123",
+      center_id: "uab",
+      type: "found",
+      category: "keys",
+      title: "rojo",
+      description: "rojo",
+      created_at: 1710000000000
+    }));
+
+    // Check updates in database (atomic update on ref "")
+    const updateWrite = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateWrite).toBeDefined();
+    expect(updateWrite.value["/posts/source-post-123/status"]).toBe("matched");
+    expect(updateWrite.value["/posts/lost-1/status"]).toBe("matched");
+    expect(updateWrite.value["/posts/source-post-123/updated_at"]).toBe(1700000000000); // from ServerValue.TIMESTAMP mockup
+    expect(updateWrite.value["/posts/lost-1/updated_at"]).toBe(1700000000000);
+
+    // Check FCM messaging calls
+    expect(env.messagingApi.send).toHaveBeenCalledTimes(2);
+
+    // Call for other-user (owner of lost-1) with source-post-123 details
+    expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
+      token: "token-other",
+      data: expect.objectContaining({
+        type: "match",
+        postId: "source-post-123",
+        matchPostId: "source-post-123"
+      })
+    }));
+
+    // Call for user-1 (owner of source-post-123) with lost-1 details
+    expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
+      token: "token-user-1",
+      data: expect.objectContaining({
+        type: "match",
+        postId: "lost-1",
+        matchPostId: "lost-1"
+      })
+    }));
+  });
 });
+

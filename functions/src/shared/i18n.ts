@@ -26,16 +26,6 @@ export const I18N_STRINGS = {
             en: "📷 Image",
             ca: "📷 Imatge"
         },
-        potential_match_title: {
-            es: "¡Posible coincidencia!",
-            en: "Potential match!",
-            ca: "Possible coincidència!"
-        },
-        potential_match_body: {
-            es: "Alguien ha publicado un objeto que podría ser el tuyo.",
-            en: "Someone posted an item that might be yours.",
-            ca: "Algú ha publicat un objecte que podria ser el teu."
-        },
         match_found_title: {
             es: "¡Posible coincidencia!",
             en: "Possible match!",
