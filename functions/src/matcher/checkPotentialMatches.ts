@@ -124,6 +124,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     if (!request.auth || !request.auth.token.email_verified) {
         throw new functions.https.HttpsError("permission-denied", I18N_STRINGS.errors.unverified_email);
     }
+    const callerUid = request.auth.uid;
     if (!center_id || !category || !type) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
     }
@@ -170,7 +171,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         if (post.type !== targetType || post.is_deleted) continue;
 
         // Excluir publicaciones del propio usuario
-        if (post.user_id === request.auth.uid) continue;
+        if (post.user_id === callerUid) continue;
 
         let score = 0;
 
@@ -222,55 +223,57 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
 
     const bestMatch = sortedMatches[0];
     if (bestMatch && bestMatch.score >= 0.80) {
-        if (!sourcePostId || !bestMatch.id) return;
-        try {
-            const updates: { [key: string]: any } = {};
-            updates[`/posts/${sourcePostId}/status`] = "matched";
-            updates[`/posts/${sourcePostId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
-            updates[`/posts/${bestMatch.id}/status`] = "matched";
-            updates[`/posts/${bestMatch.id}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+        await (async () => {
+            if (!sourcePostId || !bestMatch.id) return;
+            try {
+                const updates: { [key: string]: any } = {};
+                updates[`/posts/${sourcePostId}/status`] = "matched";
+                updates[`/posts/${sourcePostId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+                updates[`/posts/${bestMatch.id}/status`] = "matched";
+                updates[`/posts/${bestMatch.id}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
 
-            console.log(`Ejecutando update atómico para posts ${sourcePostId} y ${bestMatch.id}:`, updates);
-            await admin.database().ref().update(updates);
-            console.log(`Smart Matcher exitoso: posts ${sourcePostId} y ${bestMatch.id} actualizados a 'matched'`);
+                console.log(`Ejecutando update atómico para posts ${sourcePostId} y ${bestMatch.id}:`, updates);
+                await admin.database().ref().update(updates);
+                console.log(`Smart Matcher exitoso: posts ${sourcePostId} y ${bestMatch.id} actualizados a 'matched'`);
 
-            // Delay de 2 segundos antes de enviar las notificaciones
-            await new Promise(resolve => setTimeout(resolve, 2000));
+                // Delay de 2 segundos antes de enviar las notificaciones
+                await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // Disparar notificaciones a ambos usuarios
-            const targetUserId = bestMatch.user_id;
-            const targetTitle = bestMatch.title || "Objeto";
-            const targetDesc = bestMatch.description || "";
-            const targetPhotoUrl = bestMatch.postImageUrl || "";
+                // Disparar notificaciones a ambos usuarios
+                const targetUserId = bestMatch.user_id;
+                const targetTitle = bestMatch.title || "Objeto";
+                const targetDesc = bestMatch.description || "";
+                const targetPhotoUrl = bestMatch.postImageUrl || "";
 
-            await Promise.all([
-                notifyMatchFound(
-                    targetUserId,
-                    {
-                        id: sourcePostId,
-                        title: title || "Objeto",
-                        description: description || "",
-                        photo_url: postImageUrl || request.data.imageUrl || request.data.photo_url || ""
-                    },
-                    bestMatch.score
-                ),
-                notifyMatchFound(
-                    request.auth.uid,
-                    {
-                        id: bestMatch.id,
-                        title: targetTitle,
-                        description: targetDesc,
-                        photo_url: targetPhotoUrl
-                    },
-                    bestMatch.score,
-                    callerLang
-                )
-            ]).catch(err => {
-                console.error("Error al enviar notificaciones de match:", err);
-            });
-        } catch (error) {
-            console.error("Error en transacción atómica de matching:", error);
-        }
+                await Promise.all([
+                    notifyMatchFound(
+                        targetUserId,
+                        {
+                            id: sourcePostId,
+                            title: title || "Objeto",
+                            description: description || "",
+                            photo_url: postImageUrl || request.data.imageUrl || request.data.photo_url || ""
+                        },
+                        bestMatch.score
+                    ),
+                    notifyMatchFound(
+                        callerUid,
+                        {
+                            id: bestMatch.id,
+                            title: targetTitle,
+                            description: targetDesc,
+                            photo_url: targetPhotoUrl
+                        },
+                        bestMatch.score,
+                        callerLang
+                    )
+                ]).catch(err => {
+                    console.error("Error al enviar notificaciones de match:", err);
+                });
+            } catch (error) {
+                console.error("Error en transacción atómica de matching:", error);
+            }
+        })();
     }
 
     return {
