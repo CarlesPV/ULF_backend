@@ -71,12 +71,14 @@ export const onProfileImageUploaded = onObjectFinalized(async (event) => {
             }
         });
 
-        // Generar la URL de descarga pública y persistente
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(filePath)}?alt=media&token=${downloadToken}`;
+        // Generar la URL de descarga pública y persistente con cache-busting
+        const timestamp = Date.now();
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(filePath)}?alt=media&token=${downloadToken}&v=${timestamp}`;
 
         // Actualización atómica en Realtime Database
         await admin.database().ref(`users/${userId}`).update({
             photoUrl: publicUrl,
+            photoUpdatedAt: admin.database.ServerValue.TIMESTAMP,
             updated_at: admin.database.ServerValue.TIMESTAMP
         });
 

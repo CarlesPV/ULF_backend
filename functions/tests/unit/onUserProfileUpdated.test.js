@@ -129,4 +129,25 @@ describe("onUserProfileUpdated trigger", () => {
             }
         });
     });
+
+    test("should sync photo when only photoUpdatedAt changes", async () => {
+        const { onUserProfileUpdated } = require("../../lib/users/onUserProfileUpdated");
+
+        await onUserProfileUpdated({
+            params: { userId: "user_123" },
+            data: {
+                before: { val: () => ({ name: "Same Name", photoUrl: "http://same.jpg", photoUpdatedAt: 1000 }) },
+                after: { val: () => ({ name: "Same Name", photoUrl: "http://same.jpg", photoUpdatedAt: 2000 }) }
+            }
+        });
+
+        expect(env.writes[0]).toEqual({
+            op: "update",
+            path: "",
+            value: {
+                "chats/chat_abc/usersInfo/user_123/photoUrl": "http://same.jpg",
+                "chats/chat_def/usersInfo/user_123/photoUrl": "http://same.jpg"
+            }
+        });
+    });
 });

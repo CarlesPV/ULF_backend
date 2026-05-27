@@ -320,7 +320,7 @@ describe("secureUniversityRegistration", () => {
     });
   });
 
-  test("sets acceptedTermsVersion to null by default if not provided", async () => {
+  test("sets acceptedTermsVersion to '1.0.0' by default if terms_version is not set in DB", async () => {
     const env = setupCallableTestEnv({
       createUserResult: { uid: "uid-terms-null" },
       onceByQuery: {
@@ -344,10 +344,10 @@ describe("secureUniversityRegistration", () => {
       }
     });
 
-    expect(env.writes[0].value.acceptedTermsVersion).toBeNull();
+    expect(env.writes[0].value.acceptedTermsVersion).toBe("1.0.0");
   });
 
-  test("saves acceptedTermsVersion when provided in the registration payload", async () => {
+  test("saves acceptedTermsVersion from settings/legal/terms_version when present in DB", async () => {
     const env = setupCallableTestEnv({
       createUserResult: { uid: "uid-terms-provided" },
       onceByQuery: {
@@ -357,6 +357,9 @@ describe("secureUniversityRegistration", () => {
             is_active: true
           }
         }
+      },
+      onceByPath: {
+        "settings/legal/terms_version": "2.1.3"
       }
     });
     const { secureUniversityRegistration } = require("../../lib/auth/secureUniversityRegistration");
@@ -367,8 +370,7 @@ describe("secureUniversityRegistration", () => {
         password: "secret123",
         name: "Ada",
         termsAccepted: true,
-        privacyAccepted: true,
-        acceptedTermsVersion: "2.1.3"
+        privacyAccepted: true
       }
     });
 

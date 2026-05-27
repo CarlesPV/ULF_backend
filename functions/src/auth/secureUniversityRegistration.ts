@@ -30,7 +30,7 @@ import { RegistrationPayload, SupportedLanguage } from "../shared/types";
  */
 export const secureUniversityRegistration = functions.https.onCall(async (request) => {
     const data = request.data as RegistrationPayload;
-    const { email, password, name, preferredLanguage, language, termsAccepted, privacyAccepted, acceptedTermsVersion } = data;
+    const { email, password, name, preferredLanguage, language, termsAccepted, privacyAccepted } = data;
 
     if (!email || !password || !name) {
         throw new functions.https.HttpsError("invalid-argument", I18N_STRINGS.errors.incomplete_data);
@@ -85,6 +85,10 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
         });
         uid = userRecord.uid;
 
+        // Leer la versión actual de los términos
+        const termsVersionSnap = await db.ref("settings/legal/terms_version").once("value");
+        const currentTermsVersion = (termsVersionSnap.exists() && termsVersionSnap.val()) ? termsVersionSnap.val() : "1.0.0";
+
         // Preparar el perfil de usuario que se almacenará en Realtime Database.
         // SEGURIDAD: Se fuerza el rol 'student' por defecto para evitar escalación de privilegios en el auto-registro.
         const newUserProfile = {
@@ -105,7 +109,7 @@ export const secureUniversityRegistration = functions.https.onCall(async (reques
                 privacyAccepted: true,
                 acceptedAt: admin.database.ServerValue.TIMESTAMP
             },
-            acceptedTermsVersion: acceptedTermsVersion || null,
+            acceptedTermsVersion: currentTermsVersion,
             created_at: admin.database.ServerValue.TIMESTAMP,
             updated_at: admin.database.ServerValue.TIMESTAMP,
             is_deleted: false
