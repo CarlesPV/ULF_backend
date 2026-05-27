@@ -21,7 +21,7 @@ export const onUserProfileUpdated = onValueUpdated("/users/{userId}", async (eve
     if (!after) return; // Evitar procesamiento en caso de borrado de usuario
 
     const nameChanged = before?.name !== after?.name;
-    const photoChanged = before?.photoUrl !== after?.photoUrl;
+    const photoChanged = (before?.photoUrl !== after?.photoUrl) || (before?.photoUpdatedAt !== after?.photoUpdatedAt);
 
     if (!nameChanged && !photoChanged) return;
 

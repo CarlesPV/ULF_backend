@@ -3,7 +3,8 @@ import { HttpsError } from "firebase-functions/v2/https";
 import { admin } from "../shared/firebase";
 import { Center } from "../shared/types";
 import { DEFAULT_LANGUAGE, translateText } from "../shared/translate";
-import { notifyMultipleUsersOfMatch } from "../shared/notifications";
+import { notifyMatchFound } from "../shared/notifications";
+import { calculateMatchScore } from "../shared/matchingUtils";
 import { getHaversineDistance } from "../shared/utils";
 import { I18N_STRINGS } from "../shared/i18n";
 import * as functions from "firebase-functions";
@@ -368,71 +369,121 @@ async function notifyMatchesForNewPost(postId: string, newPost: any): Promise<vo
         );
         const postSnapshots = await Promise.all(postPromises);
 
-        // Preparar y traducir los términos de coincidencia
-        let searchTerms = `${newPost.color || ""} ${newPost.description || ""}`.trim();
-        let searchWords: string[] = [];
-
-        if (searchTerms !== "") {
-            try {
-                const translation = await translateText(searchTerms, DEFAULT_LANGUAGE);
-                searchWords = translation.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
-            } catch (error) {
-                console.error(`Error traduciendo búsqueda para post ${postId}:`, error);
+        // Traducir el post de origen de forma asíncrona para que calculateMatchScore tenga las traducciones disponibles
+        let translatedTitle = newPost.title || "";
+        let translatedDesc = newPost.description || "";
+        try {
+            if (newPost.title) {
+                translatedTitle = await translateText(newPost.title, DEFAULT_LANGUAGE);
             }
+            if (newPost.description) {
+                translatedDesc = await translateText(newPost.description, DEFAULT_LANGUAGE);
+            }
+        } catch (error) {
+            console.error("Error traduciendo post origen para matching:", error);
         }
 
-        // Evaluar compatibilidad de reportes y scoring
-        const potentialMatches: { userId: string; score: number }[] = [];
+        const sourcePostWithTranslation = {
+            ...newPost,
+            translated_title: translatedTitle.toLowerCase(),
+            translated_description: translatedDesc.toLowerCase()
+        };
+
+        const potentialMatches: any[] = [];
 
         for (const snap of postSnapshots) {
             if (!snap.exists()) continue;
             const existingPost = snap.val();
 
-            if (existingPost.type === targetType && existingPost.category === newPost.category &&
-                existingPost.status === "active" && !existingPost.is_deleted && existingPost.user_id) {
+            // Filtros obligatorios (hard filters)
+            if (existingPost.type !== targetType || existingPost.is_deleted || existingPost.status !== "active") continue;
 
-                let score = 1.0;
-                const targetDesc = existingPost.translated_description || existingPost.description?.toLowerCase() || "";
+            // Excluir publicaciones del propio usuario
+            if (existingPost.user_id === newPost.user_id) continue;
 
-                if (searchWords.length > 0 && targetDesc) {
-                    let matchCount = 0;
-                    for (const word of searchWords) {
-                        if (targetDesc.includes(word)) matchCount++;
-                    }
-                    score += matchCount * 0.5;
-                }
+            const score = calculateMatchScore(sourcePostWithTranslation, existingPost);
 
-                // Umbral mínimo de relevancia: Filtra emparejamientos débiles de categorías genéricas
-                if (score >= 1.5) {
-                    potentialMatches.push({
-                        userId: existingPost.user_id,
-                        score: score
-                    });
-                }
-            }
+            potentialMatches.push({
+                ...existingPost,
+                score
+            });
         }
 
-        // Ordenar coincidencias y tomar las 5 más relevantes
-        const topMatches = potentialMatches.sort((a, b) => b.score - a.score).slice(0, 5);
+        // Ordenar los candidatos por score de mayor a menor y, en caso de empate, por fecha de creación de más reciente a más antiguo.
+        const sortedMatches = potentialMatches.sort((a, b) => {
+            if (Math.abs(b.score - a.score) > 0.001) return b.score - a.score;
+            return (b.created_at || b.date || 0) - (a.created_at || a.date || 0);
+        });
 
-        // Enviar notificaciones push a los propietarios de posts anteriores informando sobre el nuevo post
-        for (const match of topMatches) {
+        const bestMatch = sortedMatches[0];
+
+        if (bestMatch && bestMatch.score >= 0.80 && bestMatch.id && postId) {
             try {
-                await notifyMultipleUsersOfMatch([match.userId], {
-                    id: postId,
-                    title: newPost.title,
-                    description: newPost.description,
-                    photo_url: newPost.photo_url || ""
-                }, match.score);
+                // Verificar la existencia de ambos posts
+                const sourcePostSnap = await admin.database().ref(`posts/${postId}`).once("value");
+                if (sourcePostSnap.exists()) {
+                    let autoMatched = false;
+                    try {
+                        const updates: { [key: string]: any } = {};
+                        updates[`/posts/${postId}/status`] = "matched";
+                        updates[`/posts/${postId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+                        updates[`/posts/${bestMatch.id}/status`] = "matched";
+                        updates[`/posts/${bestMatch.id}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+
+                        console.log(`Ejecutando update atómico para posts ${postId} y ${bestMatch.id}:`, updates);
+                        await admin.database().ref().update(updates);
+                        console.log(`Smart Matcher exitoso: posts ${postId} y ${bestMatch.id} actualizados a 'matched'`);
+                        autoMatched = true;
+                    } catch (error) {
+                        console.error("Error en transacción atómica de matching:", error);
+                    }
+
+                    if (autoMatched) {
+                        // Delay de 2 segundos antes de enviar las notificaciones
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+
+                        // Disparar notificaciones cruzadas
+                        const targetUserId = bestMatch.user_id;
+                        const targetTitle = bestMatch.title || "Objeto";
+                        const targetDesc = bestMatch.description || "";
+                        const targetPhotoUrl = bestMatch.postImageUrl || bestMatch.imageUrl || bestMatch.photo_url || "";
+
+                        const sourceTitle = newPost.title || "Objeto";
+                        const sourceDesc = newPost.description || "";
+                        const sourcePhotoUrl = newPost.postImageUrl || newPost.imageUrl || newPost.photo_url || "";
+
+                        await Promise.all([
+                            notifyMatchFound(
+                                targetUserId,
+                                {
+                                    id: postId,
+                                    title: sourceTitle,
+                                    description: sourceDesc,
+                                    photo_url: sourcePhotoUrl
+                                },
+                                bestMatch.score
+                            ),
+                            notifyMatchFound(
+                                newPost.user_id,
+                                {
+                                    id: bestMatch.id,
+                                    title: targetTitle,
+                                    description: targetDesc,
+                                    photo_url: targetPhotoUrl
+                                },
+                                bestMatch.score
+                            )
+                        ]).catch(err => {
+                            console.error("Error al enviar notificaciones de match:", err);
+                        });
+                    }
+                } else {
+                    console.error(`Smart Matcher: El post de origen ${postId} no existe en la base de datos. Se aborta la actualización.`);
+                }
             } catch (error) {
-                console.error(`Error notificando usuario ${match.userId} sobre nuevo post ${postId}:`, error);
+                console.error("Error al verificar existencia de post de origen:", error);
             }
         }
-
-        if (topMatches.length > 0) {
-            console.log(`Post ${postId}: ${topMatches.length} matches encontrados y notificaciones enviadas (umbral >= 1.5)`);
-        }
-
     } catch (error) {
         console.error(`Error en búsqueda de matches para nuevo post ${postId}:`, error);
     }

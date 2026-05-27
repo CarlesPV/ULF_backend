@@ -82,7 +82,8 @@ describe("onProfileImageUploaded trigger", () => {
             op: "update",
             path: "users/user_123",
             value: expect.objectContaining({
-                photoUrl: expect.stringContaining("https://firebasestorage.googleapis.com/v0/b/test-bucket/o/users%2Fuser_123%2Fprofile_image?alt=media&token="),
+                photoUrl: expect.stringMatching(/https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/test-bucket\/o\/users%2Fuser_123%2Fprofile_image\?alt=media&token=[a-f0-9-]+\&v=\d+/),
+                photoUpdatedAt: expect.any(Number),
                 updated_at: expect.any(Number)
             })
         });
@@ -124,7 +125,8 @@ describe("onProfileImageUploaded trigger", () => {
             op: "update",
             path: "users/user_123",
             value: expect.objectContaining({
-                photoUrl: "https://firebasestorage.googleapis.com/v0/b/test-bucket/o/users%2Fuser_123%2Fprofile_image?alt=media&token=existing-token-uuid",
+                photoUrl: expect.stringMatching(/^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/test-bucket\/o\/users%2Fuser_123%2Fprofile_image\?alt=media&token=existing-token-uuid&v=\d+$/),
+                photoUpdatedAt: expect.any(Number),
                 updated_at: expect.any(Number)
             })
         });
