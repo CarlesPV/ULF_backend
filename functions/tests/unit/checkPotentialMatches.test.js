@@ -491,7 +491,7 @@ describe("checkPotentialMatches", () => {
     expect(result.matches[0].score).toBeGreaterThanOrEqual(1.0);
   });
 
-  test("updates status to matched and notifies both users on successful match (score >= 0.80)", async () => {
+  test("does not update status nor notify users on matching candidates (read-only callable)", async () => {
     const env = setupCallableTestEnv({
       onceByPath: {
         "active_posts/uab/lost": {
@@ -517,22 +517,6 @@ describe("checkPotentialMatches", () => {
           user_id: "user-1",
           title: "rojo",
           created_at: 1710000000000
-        },
-        "users/other-user": {
-          settings: {
-            language: "es"
-          }
-        },
-        "users/other-user/fcm_tokens": {
-          "token-other": true
-        },
-        "users/user-1": {
-          settings: {
-            language: "es"
-          }
-        },
-        "users/user-1/fcm_tokens": {
-          "token-user-1": true
         }
       },
       translateResult: "red keys"
@@ -550,38 +534,16 @@ describe("checkPotentialMatches", () => {
       created_at: 1710000000000
     }));
 
-    expect(result.autoMatched).toBe(true);
+    expect(result.autoMatched).toBe(false);
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].id).toBe("lost-1");
 
-    // Check updates in database (atomic update on ref "")
+    // Check updates in database (should NOT contain any status: matched updates)
     const updateWrite = env.writes.find(w => w.op === "update" && w.path === "");
-    expect(updateWrite).toBeDefined();
-    expect(updateWrite.value["/posts/source-post-123/status"]).toBe("matched");
-    expect(updateWrite.value["/posts/lost-1/status"]).toBe("matched");
-    expect(updateWrite.value["/posts/source-post-123/updated_at"]).toBe(1700000000000); // from ServerValue.TIMESTAMP mockup
-    expect(updateWrite.value["/posts/lost-1/updated_at"]).toBe(1700000000000);
+    expect(updateWrite).toBeUndefined();
 
-    // Check FCM messaging calls
-    expect(env.messagingApi.send).toHaveBeenCalledTimes(2);
-
-    // Call for other-user (owner of lost-1) with source-post-123 details
-    expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
-      token: "token-other",
-      data: expect.objectContaining({
-        type: "match",
-        postId: "source-post-123",
-        matchPostId: "source-post-123"
-      })
-    }));
-
-    // Call for user-1 (owner of source-post-123) with lost-1 details
-    expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
-      token: "token-user-1",
-      data: expect.objectContaining({
-        type: "match",
-        postId: "lost-1",
-        matchPostId: "lost-1"
-      })
-    }));
+    // Check FCM messaging calls (should be 0)
+    expect(env.messagingApi.send).not.toHaveBeenCalled();
   });
 });
 

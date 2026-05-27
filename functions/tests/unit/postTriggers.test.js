@@ -154,6 +154,18 @@ describe("post triggers", () => {
           "lost-1": 100,
           "lost-low": 101
         },
+        "posts/new-post": {
+          id: "new-post",
+          center_id: "uab",
+          status: "active",
+          is_deleted: false,
+          user_id: "user-1",
+          type: "found",
+          category: "keys",
+          title: "Llavero rojo",
+          description: "Llavero rojo",
+          created_at: 123
+        },
         "posts/lost-1": {
           id: "lost-1",
           type: "lost",
@@ -161,6 +173,8 @@ describe("post triggers", () => {
           status: "active",
           is_deleted: false,
           user_id: "owner-1",
+          title: "Llavero rojo",
+          translated_title: "red keychain",
           translated_description: "red keychain near library"
         },
         "posts/lost-low": {
@@ -175,6 +189,10 @@ describe("post triggers", () => {
         "users/owner-1/settings/language": "es",
         "users/owner-1/fcm_tokens": {
           "token-owner-1": true
+        },
+        "users/user-1/settings/language": "es",
+        "users/user-1/fcm_tokens": {
+          "token-user-1": true
         }
       }
     });
@@ -191,7 +209,8 @@ describe("post triggers", () => {
       category: "keys",
       color: "rojo",
       title: "Llavero rojo",
-      description: "Llavero rojo"
+      description: "Llavero rojo",
+      user_id: "user-1"
     }, "new-post", update));
 
     expect(env.writes).toContainEqual({
@@ -204,7 +223,7 @@ describe("post triggers", () => {
       path: "active_posts/uab/found/new-post",
       value: 123
     });
-    expect(env.messagingApi.send).toHaveBeenCalledTimes(1);
+    expect(env.messagingApi.send).toHaveBeenCalledTimes(2);
     expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
       token: "token-owner-1",
       data: expect.objectContaining({
@@ -212,37 +231,70 @@ describe("post triggers", () => {
         matchTitle: "Llavero rojo"
       })
     }));
+    expect(env.messagingApi.send).toHaveBeenCalledWith(expect.objectContaining({
+      token: "token-user-1",
+      data: expect.objectContaining({
+        matchPostId: "lost-1",
+        matchTitle: "Llavero rojo"
+      })
+    }));
   });
 
-  test("onPostCreated limits automatic match notifications to the top five scores", async () => {
-    const activePosts = {};
-    const onceByPath = {
-      "active_posts/uab/lost": activePosts
-    };
-    const words = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
-
-    for (let index = 1; index <= 6; index++) {
-      const id = `lost-${index}`;
-      const userId = `owner-${index}`;
-      activePosts[id] = index;
-      onceByPath[`posts/${id}`] = {
-        id,
-        type: "lost",
-        category: "keys",
-        status: "active",
-        is_deleted: false,
-        user_id: userId,
-        translated_description: words.slice(0, index).join(" ")
-      };
-      onceByPath[`users/${userId}/settings/language`] = "es";
-      onceByPath[`users/${userId}/fcm_tokens`] = {
-        [`token-${index}`]: true
-      };
-    }
-
+  test("onPostCreated matches and notifies only the single best candidate above threshold", async () => {
     const env = setupPostTriggerEnv({
-      translateResult: words.join(" "),
-      onceByPath
+      translateResult: "red keychain",
+      onceByPath: {
+        "active_posts/uab/lost": {
+          "lost-best": 100,
+          "lost-good": 101
+        },
+        "posts/new-post": {
+          id: "new-post",
+          center_id: "uab",
+          status: "active",
+          is_deleted: false,
+          user_id: "user-1",
+          type: "found",
+          category: "keys",
+          title: "Llavero rojo",
+          description: "Llavero rojo",
+          created_at: 123
+        },
+        "posts/lost-best": {
+          id: "lost-best",
+          type: "lost",
+          category: "keys",
+          status: "active",
+          is_deleted: false,
+          user_id: "owner-best",
+          title: "Llavero rojo",
+          translated_title: "red keychain",
+          translated_description: "red keychain near library"
+        },
+        "posts/lost-good": {
+          id: "lost-good",
+          type: "lost",
+          category: "keys",
+          status: "active",
+          is_deleted: false,
+          user_id: "owner-good",
+          title: "Llaves",
+          translated_title: "keys",
+          translated_description: "ordinary keychain"
+        },
+        "users/owner-best/settings/language": "es",
+        "users/owner-best/fcm_tokens": {
+          "token-best": true
+        },
+        "users/owner-good/settings/language": "es",
+        "users/owner-good/fcm_tokens": {
+          "token-good": true
+        },
+        "users/user-1/settings/language": "es",
+        "users/user-1/fcm_tokens": {
+          "token-user-1": true
+        }
+      }
     });
     const { onPostCreated } = require("../../lib/posts/postTriggers");
 
@@ -254,25 +306,46 @@ describe("post triggers", () => {
       created_at: 123,
       type: "found",
       category: "keys",
-      color: "alpha beta gamma delta epsilon zeta",
-      title: "Candidate",
-      description: "Candidate"
+      color: "rojo",
+      title: "Llavero rojo",
+      description: "Llavero rojo",
+      user_id: "user-1"
     }, "new-post"));
 
     const sentTokens = env.messagingApi.send.mock.calls.map(([message]) => message.token);
-    expect(sentTokens).toHaveLength(5);
-    expect(sentTokens).toEqual(expect.arrayContaining(["token-2", "token-3", "token-4", "token-5", "token-6"]));
-    expect(sentTokens).not.toContain("token-1");
+    expect(sentTokens).toHaveLength(2);
+    expect(sentTokens).toContain("token-best");
+    expect(sentTokens).toContain("token-user-1");
+    expect(sentTokens).not.toContain("token-good");
+
+    // Check updates in database
+    const updateWrite = env.writes.find(w => w.op === "update" && w.path === "");
+    expect(updateWrite).toBeDefined();
+    expect(updateWrite.value["/posts/new-post/status"]).toBe("matched");
+    expect(updateWrite.value["/posts/lost-best/status"]).toBe("matched");
+    expect(updateWrite.value["/posts/lost-good/status"]).toBeUndefined();
   });
 
   test("onPostCreated keeps indexing when automatic notification lookup fails", async () => {
     jest.spyOn(console, "error").mockImplementation(() => { });
-    const notifyMultipleUsersOfMatch = jest.fn().mockRejectedValue(new Error("notify failed"));
+    const notifyMatchFound = jest.fn().mockRejectedValue(new Error("notify failed"));
     const env = setupPostTriggerEnv({
       translateResult: "red keychain",
       onceByPath: {
         "active_posts/uab/lost": {
           "lost-1": 100
+        },
+        "posts/new-post": {
+          id: "new-post",
+          center_id: "uab",
+          status: "active",
+          is_deleted: false,
+          user_id: "user-1",
+          type: "found",
+          category: "keys",
+          title: "Llavero rojo",
+          description: "Llavero rojo",
+          created_at: 123
         },
         "posts/lost-1": {
           id: "lost-1",
@@ -281,12 +354,14 @@ describe("post triggers", () => {
           status: "active",
           is_deleted: false,
           user_id: "owner-1",
+          title: "Llavero rojo",
+          translated_title: "red keychain",
           translated_description: "red keychain"
         }
       }
     });
     jest.doMock(require.resolve("../../lib/shared/notifications"), () => ({
-      notifyMultipleUsersOfMatch
+      notifyMatchFound
     }));
     const { onPostCreated } = require("../../lib/posts/postTriggers");
 
@@ -300,7 +375,8 @@ describe("post triggers", () => {
       category: "keys",
       color: "rojo",
       title: "Llavero rojo",
-      description: "Llavero rojo"
+      description: "Llavero rojo",
+      user_id: "user-1"
     }, "new-post"));
 
     expect(env.writes).toContainEqual({
@@ -313,7 +389,7 @@ describe("post triggers", () => {
       path: "active_posts/uab/found/new-post",
       value: 123
     });
-    expect(notifyMultipleUsersOfMatch).toHaveBeenCalled();
+    expect(notifyMatchFound).toHaveBeenCalled();
   });
 
   test("onPostUpdated writes active posts into the active index", async () => {
