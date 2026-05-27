@@ -132,7 +132,7 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
     const targetType = (type === "found") ? "lost" : "found";
 
     const activeRefs = await admin.database().ref(`active_posts/${center_id}/${targetType}`).once("value");
-    if (!activeRefs.exists()) return { matches: [] };
+    if (!activeRefs.exists()) return { matches: [], autoMatched: false };
 
     const activeIds = Object.keys(activeRefs.val());
     const postSnapshots = await Promise.all(
@@ -221,64 +221,75 @@ export const checkPotentialMatches = functions.https.onCall(async (request) => {
         return (b.created_at || 0) - (a.created_at || 0);
     });
 
+    let autoMatched = false;
     const bestMatch = sortedMatches[0];
-    if (bestMatch && bestMatch.score >= 0.80) {
-        await (async () => {
-            if (!sourcePostId || !bestMatch.id) return;
-            try {
-                const updates: { [key: string]: any } = {};
-                updates[`/posts/${sourcePostId}/status`] = "matched";
-                updates[`/posts/${sourcePostId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
-                updates[`/posts/${bestMatch.id}/status`] = "matched";
-                updates[`/posts/${bestMatch.id}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+    if (bestMatch && bestMatch.score >= 0.80 && sourcePostId && bestMatch.id) {
+        try {
+            const sourcePostSnap = await admin.database().ref(`posts/${sourcePostId}`).once("value");
+            if (sourcePostSnap.exists()) {
+                try {
+                    const updates: { [key: string]: any } = {};
+                    updates[`/posts/${sourcePostId}/status`] = "matched";
+                    updates[`/posts/${sourcePostId}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
+                    updates[`/posts/${bestMatch.id}/status`] = "matched";
+                    updates[`/posts/${bestMatch.id}/updated_at`] = admin.database.ServerValue.TIMESTAMP;
 
-                console.log(`Ejecutando update atómico para posts ${sourcePostId} y ${bestMatch.id}:`, updates);
-                await admin.database().ref().update(updates);
-                console.log(`Smart Matcher exitoso: posts ${sourcePostId} y ${bestMatch.id} actualizados a 'matched'`);
+                    console.log(`Ejecutando update atómico para posts ${sourcePostId} y ${bestMatch.id}:`, updates);
+                    await admin.database().ref().update(updates);
+                    console.log(`Smart Matcher exitoso: posts ${sourcePostId} y ${bestMatch.id} actualizados a 'matched'`);
+                    autoMatched = true;
+                } catch (error) {
+                    console.error("Error en transacción atómica de matching:", error);
+                }
 
-                // Delay de 2 segundos antes de enviar las notificaciones
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                if (autoMatched) {
+                    // Delay de 2 segundos antes de enviar las notificaciones
+                    await new Promise(resolve => setTimeout(resolve, 2000));
 
-                // Disparar notificaciones a ambos usuarios
-                const targetUserId = bestMatch.user_id;
-                const targetTitle = bestMatch.title || "Objeto";
-                const targetDesc = bestMatch.description || "";
-                const targetPhotoUrl = bestMatch.postImageUrl || "";
+                    // Disparar notificaciones a ambos usuarios
+                    const targetUserId = bestMatch.user_id;
+                    const targetTitle = bestMatch.title || "Objeto";
+                    const targetDesc = bestMatch.description || "";
+                    const targetPhotoUrl = bestMatch.postImageUrl || "";
 
-                await Promise.all([
-                    notifyMatchFound(
-                        targetUserId,
-                        {
-                            id: sourcePostId,
-                            title: title || "Objeto",
-                            description: description || "",
-                            photo_url: postImageUrl || request.data.imageUrl || request.data.photo_url || ""
-                        },
-                        bestMatch.score
-                    ),
-                    notifyMatchFound(
-                        callerUid,
-                        {
-                            id: bestMatch.id,
-                            title: targetTitle,
-                            description: targetDesc,
-                            photo_url: targetPhotoUrl
-                        },
-                        bestMatch.score,
-                        callerLang
-                    )
-                ]).catch(err => {
-                    console.error("Error al enviar notificaciones de match:", err);
-                });
-            } catch (error) {
-                console.error("Error en transacción atómica de matching:", error);
+                    await Promise.all([
+                        notifyMatchFound(
+                            targetUserId,
+                            {
+                                id: sourcePostId,
+                                title: title || "Objeto",
+                                description: description || "",
+                                photo_url: postImageUrl || request.data.imageUrl || request.data.photo_url || ""
+                            },
+                            bestMatch.score
+                        ),
+                        notifyMatchFound(
+                            callerUid,
+                            {
+                                id: bestMatch.id,
+                                title: targetTitle,
+                                description: targetDesc,
+                                photo_url: targetPhotoUrl
+                            },
+                            bestMatch.score,
+                            callerLang
+                        )
+                    ]).catch(err => {
+                        console.error("Error al enviar notificaciones de match:", err);
+                    });
+                }
+            } else {
+                console.error(`Smart Matcher: El post de origen ${sourcePostId} no existe en la base de datos. Se aborta la actualización.`);
             }
-        })();
+        } catch (error) {
+            console.error("Error al verificar existencia de post de origen:", error);
+        }
     }
 
     return {
         matches: sortedMatches
             .slice(0, 5)
-            .map(({ created_at, user_id, ...rest }) => rest)
+            .map(({ created_at, user_id, ...rest }) => rest),
+        autoMatched
     };
 });

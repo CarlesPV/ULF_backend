@@ -101,7 +101,8 @@ describe("checkPotentialMatches", () => {
           photo_path: "posts/lost-1.jpg",
           postImageUrl: ""
         }
-      ]
+      ],
+      autoMatched: false
     });
     expect(env.refMock).toHaveBeenCalledWith("active_posts/uab/lost");
     expect(env.refMock).toHaveBeenCalledWith("posts/lost-1");
@@ -124,7 +125,7 @@ describe("checkPotentialMatches", () => {
       category: "keys"
     }));
 
-    expect(result).toEqual({ matches: [] });
+    expect(result).toEqual({ matches: [], autoMatched: false });
   });
 
   test("ignores active index entries whose post snapshot no longer exists", async () => {
@@ -144,7 +145,7 @@ describe("checkPotentialMatches", () => {
       category: "keys"
     }));
 
-    expect(result).toEqual({ matches: [] });
+    expect(result).toEqual({ matches: [], autoMatched: false });
   });
 
 
@@ -193,7 +194,7 @@ describe("checkPotentialMatches", () => {
       category: "keys"
     }));
 
-    expect(result).toEqual({ matches: [] });
+    expect(result).toEqual({ matches: [], autoMatched: false });
     expect(env.translateText).not.toHaveBeenCalled();
   });
 
@@ -236,7 +237,8 @@ describe("checkPotentialMatches", () => {
           photo_path: "posts/lost-1.jpg",
           postImageUrl: ""
         }
-      ]
+      ],
+      autoMatched: false
     });
     expect(errorSpy).toHaveBeenCalled();
   });
@@ -507,6 +509,15 @@ describe("checkPotentialMatches", () => {
           photo_path: "posts/lost-same.jpg",
           created_at: 1710000000000
         },
+        "posts/source-post-123": {
+          id: "source-post-123",
+          type: "found",
+          category: "keys",
+          is_deleted: false,
+          user_id: "user-1",
+          title: "rojo",
+          created_at: 1710000000000
+        },
         "users/other-user": {
           settings: {
             language: "es"
@@ -538,6 +549,8 @@ describe("checkPotentialMatches", () => {
       description: "rojo",
       created_at: 1710000000000
     }));
+
+    expect(result.autoMatched).toBe(true);
 
     // Check updates in database (atomic update on ref "")
     const updateWrite = env.writes.find(w => w.op === "update" && w.path === "");
